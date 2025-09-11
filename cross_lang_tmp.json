@@ -1,0 +1,44 @@
+{
+  "config": {
+    "nodes": 300,
+    "density": 2.0,
+    "seed": 42,
+    "iterations": 1,
+    "output": "/Users/yoda/Documents/REPOS/optimized-sssp/cross_lang_tmp.json",
+    "verbose": false
+  },
+  "results": {
+    "rust_baseline": {
+      "time_s": 0.0003561973571777344,
+      "relaxations": 269,
+      "light_relaxations": 0,
+      "heavy_relaxations": 0,
+      "settled": 300
+    },
+    "rust_stoc": {
+      "time_s": 0.00028967857360839844,
+      "relaxations": 281,
+      "light_relaxations": 281,
+      "heavy_relaxations": 0,
+      "settled": 256
+    },
+    "rust_stoc_autotune": {
+      "time_s": 0.00036025047302246094,
+      "relaxations": 286,
+      "light_relaxations": 286,
+      "heavy_relaxations": 0,
+      "settled": 256
+    },
+    "go_dijkstra": {
+      "elapsed_wall_s": 0.6892828941345215,
+      "parsed_dijkstra_ms": null,
+      "raw_output": null
+    },
+    "csharp_dijkstra": {
+      "elapsed_wall_s": 0.31976771354675293,
+      "parsed_dijkstra_ms": null,
+      "raw_output": null
+    }
+  },
+  "timestamp": 1757281809.4553459
+}

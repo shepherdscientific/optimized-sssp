@@ -1,0 +1,88 @@
+{
+  "Configuration": {
+    "Nodes": 300,
+    "EdgeDensity": 2.0,
+    "Iterations": 1,
+    "Seed": 42
+  },
+  "Results": {
+    "OptimizedAlgorithmMs": 9.0299,
+    "DijkstraAlgorithmMs": 2.4324,
+    "SpeedupFactor": 0.2693717538400204,
+    "CorrectnessVerified": true,
+    "LayersCreated": 0,
+    "ClustersFormed": 0
+  },
+  "DetailedResults": [
+    {
+      "OptimizedTimeMs": 9.0299,
+      "DijkstraTimeMs": 2.4324,
+      "CorrectnessVerified": true,
+      "LayersCreated": 0,
+      "ClustersFormed": 0,
+      "OptimizedMetrics": {
+        "TotalExecutionTimeNs": 4167600,
+        "LayeringTimeNs": 0,
+        "ClusteringTimeNs": 0,
+        "BellmanFordTimeNs": 0,
+        "FinalizationTimeNs": 0,
+        "LayersCreated": 0,
+        "ClustersFormed": 0,
+        "BellmanFordIterations": 0,
+        "InfluentialNodesDetected": 0,
+        "PeakMemoryBytes": 0,
+        "GraphMemoryBytes": 0,
+        "AuxiliaryMemoryBytes": 0,
+        "IntraLayerEdges": 0,
+        "InterLayerEdges": 0,
+        "ShortcutEdges": 0,
+        "NodesRelaxed": 241,
+        "DistanceUpdates": 240,
+        "ConvergenceThreshold": 0.0,
+        "CpuInfo": "",
+        "ThreadCount": 0,
+        "CompilerVersion": "",
+        "CustomMetrics": {
+          "initialization_time_ns": 1142100.0,
+          "level_0_frontier_size": 1.0,
+          "dijkstra_rounds": 1.0,
+          "bellman_ford_rounds": 0.0,
+          "total_levels": 1.0,
+          "frontier_processing_time_ns": 1794400.0,
+          "unreachable_nodes": 69.0,
+          "reachable_nodes": 231.0,
+          "cleanup_time_ns": 898400.0,
+          "frontier_shrinks": 0.0,
+          "dijkstra_threshold": 17.0,
+          "graph_memory_bytes": 9568.0,
+          "cache_optimized": 1.0
+        }
+      },
+      "DijkstraMetrics": {
+        "TotalExecutionTimeNs": 1728900,
+        "LayeringTimeNs": 0,
+        "ClusteringTimeNs": 0,
+        "BellmanFordTimeNs": 0,
+        "FinalizationTimeNs": 0,
+        "LayersCreated": 0,
+        "ClustersFormed": 0,
+        "BellmanFordIterations": 0,
+        "InfluentialNodesDetected": 0,
+        "PeakMemoryBytes": 0,
+        "GraphMemoryBytes": 0,
+        "AuxiliaryMemoryBytes": 0,
+        "IntraLayerEdges": 0,
+        "InterLayerEdges": 0,
+        "ShortcutEdges": 0,
+        "NodesRelaxed": 231,
+        "DistanceUpdates": 240,
+        "ConvergenceThreshold": 0.0,
+        "CpuInfo": "",
+        "ThreadCount": 0,
+        "CompilerVersion": "",
+        "CustomMetrics": {}
+      }
+    }
+  ],
+  "Timestamp": "2025-09-07T21:50:09.331588+00:00"
+}

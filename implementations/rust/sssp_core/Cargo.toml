@@ -1,0 +1,24 @@
+[package]
+name = "sssp_core"
+version = "0.1.0"
+edition = "2021"
+authors = ["OptimizedSSSP"]
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "sssp_core"
+crate-type = ["rlib", "cdylib", "staticlib"]
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+strip = true
+panic = "abort"
+
+[features]
+default = ["simd"]
+simd = []
+
+[dependencies]
+rand = { version = "0.8", default-features = false, features=["std", "small_rng"] }

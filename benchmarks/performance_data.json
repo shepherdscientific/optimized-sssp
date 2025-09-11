@@ -1,0 +1,176 @@
+[
+  {
+    "n": 4000,
+    "m": 7996,
+    "baseline_s": 0.0033922069997061044,
+    "stoc_s": 0.0034355939969827887,
+    "stoc_autotune_s": 0.003925000499293674,
+    "baseline_samples": [
+      0.003472213000350166,
+      0.0033122009990620427
+    ],
+    "stoc_samples": [
+      0.003451933996984735,
+      0.003419253996980842
+    ],
+    "autotune_samples": [
+      0.003929384998627938,
+      0.003920615999959409
+    ],
+    "mlogn": 66319.22092225582,
+    "mlog23": 32763.015879131137,
+    "bucket_stats": {
+      "buckets_visited": 12,
+      "light_pass_repeats": 40,
+      "max_bucket_index": 11,
+      "restarts": 1,
+      "delta": 8.217,
+      "heavy_ratio": 0.175
+    }
+  },
+  {
+    "n": 8000,
+    "m": 15997,
+    "baseline_s": 0.006585106501006521,
+    "stoc_s": 0.006591669498448027,
+    "stoc_autotune_s": 0.00641196550350287,
+    "baseline_samples": [
+      0.006668161004199646,
+      0.006502051997813396
+    ],
+    "stoc_samples": [
+      0.0068718920010724105,
+      0.006311446995823644
+    ],
+    "autotune_samples": [
+      0.0064157740052905865,
+      0.0064081570017151535
+    ],
+    "mlogn": 143768.18754012958,
+    "mlog23": 69149.34118140442,
+    "bucket_stats": {
+      "buckets_visited": 1,
+      "light_pass_repeats": 1,
+      "max_bucket_index": 0,
+      "restarts": 0,
+      "delta": 16.885,
+      "heavy_ratio": 0.0
+    }
+  },
+  {
+    "n": 16000,
+    "m": 31999,
+    "baseline_s": 0.014429587001359323,
+    "stoc_s": 0.013621585996588692,
+    "stoc_autotune_s": 0.01608427099927212,
+    "baseline_samples": [
+      0.01460784499795409,
+      0.014251329004764557
+    ],
+    "stoc_samples": [
+      0.013675579997652676,
+      0.013567591995524708
+    ],
+    "autotune_samples": [
+      0.016080790999694727,
+      0.016087750998849515
+    ],
+    "mlogn": 309761.32769510016,
+    "mlog23": 145343.94154419337,
+    "bucket_stats": {
+      "buckets_visited": 16,
+      "light_pass_repeats": 54,
+      "max_bucket_index": 15,
+      "restarts": 4,
+      "delta": 9.343,
+      "heavy_ratio": 0.06
+    }
+  },
+  {
+    "n": 32000,
+    "m": 63999,
+    "baseline_s": 0.029090109001117526,
+    "stoc_s": 0.028532192496641073,
+    "stoc_autotune_s": 0.03157442650262965,
+    "baseline_samples": [
+      0.029511305001506116,
+      0.028668913000728935
+    ],
+    "stoc_samples": [
+      0.02871515799779445,
+      0.028349226995487697
+    ],
+    "autotune_samples": [
+      0.03168783800356323,
+      0.03146101500169607
+    ],
+    "mlogn": 663893.0621428575,
+    "mlog23": 304408.2951457739,
+    "bucket_stats": {
+      "buckets_visited": 17,
+      "light_pass_repeats": 60,
+      "max_bucket_index": 16,
+      "restarts": 1,
+      "delta": 8.166,
+      "heavy_ratio": 0.181
+    }
+  },
+  {
+    "n": 64000,
+    "m": 127998,
+    "baseline_s": 0.10089374149902142,
+    "stoc_s": 0.0740580335004779,
+    "stoc_autotune_s": 0.06722544150034082,
+    "baseline_samples": [
+      0.07235052200121572,
+      0.1294369609968271
+    ],
+    "stoc_samples": [
+      0.07563715199648868,
+      0.07247891500446713
+    ],
+    "autotune_samples": [
+      0.06808716100204038,
+      0.06636372199864127
+    ],
+    "mlogn": 1416507.577103027,
+    "mlog23": 635643.5764643757,
+    "bucket_stats": {
+      "buckets_visited": 1,
+      "light_pass_repeats": 1,
+      "max_bucket_index": 0,
+      "restarts": 0,
+      "delta": 16.659,
+      "heavy_ratio": 0.0
+    }
+  },
+  {
+    "n": 128000,
+    "m": 255998,
+    "baseline_s": 0.15430463849770604,
+    "stoc_s": 0.15496145100405556,
+    "stoc_autotune_s": 0.15534085250328644,
+    "baseline_samples": [
+      0.15729682899836916,
+      0.1513124479970429
+    ],
+    "stoc_samples": [
+      0.1558954670035746,
+      0.15402743500453653
+    ],
+    "autotune_samples": [
+      0.1544565100048203,
+      0.15622519500175258
+    ],
+    "mlogn": 3010481.579411763,
+    "mlog23": 1323842.055634213,
+    "bucket_stats": {
+      "buckets_visited": 1,
+      "light_pass_repeats": 1,
+      "max_bucket_index": 0,
+      "restarts": 0,
+      "delta": 16.428,
+      "heavy_ratio": 0.0
+    }
+  }
+]

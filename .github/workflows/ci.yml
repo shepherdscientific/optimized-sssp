@@ -1,0 +1,49 @@
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build Rust core
+        run: cargo build --release -p sssp_core
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Go test wrapper
+        run: |
+          cd wrappers/go
+          go test -v
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build C# wrapper
+        run: |
+          cd wrappers/csharp
+          dotnet build
+      - name: Python smoke
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Python test run
+        run: |
+          python -c "import sys; from pathlib import Path; root=Path('.').resolve(); sys.path.append(str(root/'implementations'/'python')); import rust_sssp; offs=[0,1,2,2]; tgts=[1,2]; w=[1.0,2.0]; d,_,_=rust_sssp.run_baseline(offs,tgts,w,0); assert abs(d[2]-3)<1e-6; print('Python OK')"
+      - name: Install matplotlib for plot
+        run: pip install matplotlib
+      - name: Generate performance plot (capped sizes for CI)
+        env:
+          CI: "1"
+        run: |
+          python benchmarks/plot_performance.py --sizes 4000,8000,16000,32000,64000,128000 --density 2.0 --repeat 1 --output benchmarks/performance.png
+          ls -lh benchmarks/performance.png || true
+      - name: Upload plot artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-plot
+          path: benchmarks/performance.png

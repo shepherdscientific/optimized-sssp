@@ -1,0 +1,39 @@
+# Compiled binaries (these are LARGE - rebuild locally)
+implementations/rust/sssp_core/target/
+implementations/rust/sssp_core/*.dSYM/
+*.dylib
+*.so
+*.dll
+
+# Large result files - even intermediate ones
+benchmarks/results/
+benchmarks/results/*.png
+benchmarks/results/*.json
+
+# Keep only documentation and small examples (remove the blanket exclude above)
+!benchmarks/results/*.md
+
+# Generated protobuf files (keep source .proto files)
+# (removed go & csharp generated sources)
+
+# Standard ignores
+.DS_Store
+*.tmp
+*.temp
+*.log
+*.test
+*.prof
+*.user
+*.suo
+*.cache
+.vscode/
+.idea/
+
+#python env
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+*.db

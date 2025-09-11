@@ -1,0 +1,9 @@
+prefix=/usr/local
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+Name: sssp_core
+Description: Minimal SSSP (Dijkstra + delta-stepping)
+Version: 4
+Libs: -L${libdir} -lsssp_core
+Cflags: -I${includedir}

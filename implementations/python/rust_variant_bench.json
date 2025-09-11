@@ -1,0 +1,184 @@
+[
+  {
+    "n": 1000,
+    "density": 2.0,
+    "m": 1998,
+    "baseline_ms": 1.4690149982925504,
+    "stoc_ms": 2.1215630040387623,
+    "stoc_speedup": 0.6924211043914446,
+    "baseline_stats": {
+      "relaxations": 795,
+      "heap_pushes": 796,
+      "heap_pops": 796,
+      "settled": 1000,
+      "version": 3,
+      "variant": "baseline"
+    },
+    "optimized_stats": null,
+    "hybrid_stats": null,
+    "stoc_stats": {
+      "relaxations": 816,
+      "heap_pushes": 0,
+      "heap_pops": 0,
+      "settled": 768,
+      "version": 3,
+      "variant": "stoc"
+    }
+  },
+  {
+    "n": 5000,
+    "density": 2.0,
+    "m": 9996,
+    "baseline_ms": 4.898512997897342,
+    "stoc_ms": 4.28237700543832,
+    "stoc_speedup": 1.1438771018237235,
+    "baseline_stats": {
+      "relaxations": 4237,
+      "heap_pushes": 4238,
+      "heap_pops": 4238,
+      "settled": 5000,
+      "version": 3,
+      "variant": "baseline"
+    },
+    "optimized_stats": null,
+    "hybrid_stats": null,
+    "stoc_stats": {
+      "relaxations": 4352,
+      "heap_pushes": 0,
+      "heap_pops": 0,
+      "settled": 4012,
+      "version": 3,
+      "variant": "stoc"
+    }
+  },
+  {
+    "n": 10000,
+    "density": 2.0,
+    "m": 19998,
+    "baseline_ms": 9.299129000282846,
+    "stoc_ms": 8.727863001695368,
+    "stoc_speedup": 1.0654531353753502,
+    "baseline_stats": {
+      "relaxations": 1,
+      "heap_pushes": 2,
+      "heap_pops": 2,
+      "settled": 10000,
+      "version": 3,
+      "variant": "baseline"
+    },
+    "optimized_stats": null,
+    "hybrid_stats": null,
+    "stoc_stats": {
+      "relaxations": 1,
+      "heap_pushes": 0,
+      "heap_pops": 0,
+      "settled": 2,
+      "version": 3,
+      "variant": "stoc"
+    }
+  },
+  {
+    "n": 100000,
+    "density": 2.0,
+    "m": 199998,
+    "baseline_ms": 108.42136599967489,
+    "stoc_ms": 104.44651699799579,
+    "stoc_speedup": 1.0380563097355882,
+    "baseline_stats": {
+      "relaxations": 84077,
+      "heap_pushes": 84078,
+      "heap_pops": 84078,
+      "settled": 100000,
+      "version": 3,
+      "variant": "baseline"
+    },
+    "optimized_stats": null,
+    "hybrid_stats": null,
+    "stoc_stats": {
+      "relaxations": 86136,
+      "heap_pushes": 0,
+      "heap_pops": 0,
+      "settled": 79194,
+      "version": 3,
+      "variant": "stoc"
+    }
+  },
+  {
+    "n": 500000,
+    "density": 2.0,
+    "m": 999998,
+    "baseline_ms": 668.2193599990569,
+    "stoc_ms": 664.3781719976687,
+    "stoc_speedup": 1.0057816288422579,
+    "baseline_stats": {
+      "relaxations": 3,
+      "heap_pushes": 4,
+      "heap_pops": 4,
+      "settled": 500000,
+      "version": 3,
+      "variant": "baseline"
+    },
+    "optimized_stats": null,
+    "hybrid_stats": null,
+    "stoc_stats": {
+      "relaxations": 3,
+      "heap_pushes": 0,
+      "heap_pops": 0,
+      "settled": 4,
+      "version": 3,
+      "variant": "stoc"
+    }
+  },
+  {
+    "n": 1000000,
+    "density": 2.0,
+    "m": 1999998,
+    "baseline_ms": 1567.6643749975483,
+    "stoc_ms": 1496.8972400019993,
+    "stoc_speedup": 1.0472758804708961,
+    "baseline_stats": {
+      "relaxations": 838407,
+      "heap_pushes": 838408,
+      "heap_pops": 838408,
+      "settled": 1000000,
+      "version": 3,
+      "variant": "baseline"
+    },
+    "optimized_stats": null,
+    "hybrid_stats": null,
+    "stoc_stats": {
+      "relaxations": 858313,
+      "heap_pushes": 0,
+      "heap_pops": 0,
+      "settled": 789918,
+      "version": 3,
+      "variant": "stoc"
+    }
+  },
+  {
+    "n": 5000000,
+    "density": 2.0,
+    "m": 9999999,
+    "baseline_ms": 8584.107908995065,
+    "stoc_ms": 7940.922139001486,
+    "stoc_speedup": 1.080996357694354,
+    "baseline_stats": {
+      "relaxations": 4198876,
+      "heap_pushes": 4198877,
+      "heap_pops": 4198877,
+      "settled": 5000000,
+      "version": 3,
+      "variant": "baseline"
+    },
+    "optimized_stats": null,
+    "hybrid_stats": null,
+    "stoc_stats": {
+      "relaxations": 4301960,
+      "heap_pushes": 0,
+      "heap_pops": 0,
+      "settled": 3956394,
+      "version": 3,
+      "variant": "stoc"
+    }
+  }
+]
