@@ -48,6 +48,11 @@ def measure(offs,tg,wt,mode, autotune_env=None):
                         os.environ.pop(k, None)
                     else:
                         os.environ[k]=old
+    elif mode=='khop':
+        if hasattr(rust_sssp,'run_khop'):
+            rust_sssp.run_khop(offs,tg,wt,0)
+        else:
+            raise ValueError('khop not available')
     else:
         raise ValueError(mode)
     return time.perf_counter()-t0
@@ -77,18 +82,22 @@ def main():
     rows=[]
     do_autotune = (not args.no_autotune) and hasattr(rust_sssp,'run_stoc_autotune')
     autotune_env={'SSSP_STOC_AUTOTUNE_SET':args.autotune_set,'SSSP_STOC_AUTOTUNE_LIMIT':args.autotune_limit}
+    has_khop = hasattr(rust_sssp,'run_khop')
     for n in sizes:
         offs,tg,wt=gen_graph(n,args.density,12345)
         b=[measure(offs,tg,wt,'baseline') for _ in range(args.repeat)]
         s=[measure(offs,tg,wt,'stoc') for _ in range(args.repeat)]
+        k=[]
+        if has_khop:
+            k=[measure(offs,tg,wt,'khop') for _ in range(args.repeat)]
         a=[]
         if do_autotune:
             # Autotune more expensive; single measurement usually fine, but honor repeat if >1.
             a=[measure(offs,tg,wt,'stoc_autotune',autotune_env=autotune_env) for _ in range(max(1,args.repeat))]
-        bt=statistics.median(b); st=statistics.median(s); at=statistics.median(a) if a else None
+        bt=statistics.median(b); st=statistics.median(s); at=statistics.median(a) if a else None; kt=statistics.median(k) if k else None
         m=offs[-1]; logn=math.log(n)
         # Per-series stats for error bars
-        row={'n':n,'m':m,'baseline_s':bt,'stoc_s':st,'stoc_autotune_s':at,'baseline_samples':b,'stoc_samples':s,'autotune_samples':a,'mlogn':m*logn,'mlog23':m*(logn**(2/3))}
+        row={'n':n,'m':m,'baseline_s':bt,'stoc_s':st,'stoc_autotune_s':at,'khop_s':kt,'baseline_samples':b,'stoc_samples':s,'khop_samples':k,'autotune_samples':a,'mlogn':m*logn,'mlog23':m*(logn**(2/3))}
         # Attempt to pull bucket stats via FFI if available
         try:
             import rust_sssp as rs
@@ -101,10 +110,12 @@ def main():
         except Exception:
             pass
         rows.append(row)
+        parts=[f"n={n} baseline {bt*1000:.2f}ms", f"stoc {st*1000:.2f}ms"]
+        if kt is not None:
+            parts.append(f"khop {kt*1000:.2f}ms")
         if at is not None:
-            print(f"n={n} baseline {bt*1000:.2f}ms stoc {st*1000:.2f}ms stoc_autotune {at*1000:.2f}ms")
-        else:
-            print(f"n={n} baseline {bt*1000:.2f}ms stoc {st*1000:.2f}ms")
+            parts.append(f"stoc_autotune {at*1000:.2f}ms")
+        print(' '.join(parts))
     # Normalize theoretical curves to first baseline point for visibility
     if rows:
         k_base=rows[0]['baseline_s']/rows[0]['mlogn']
@@ -113,6 +124,7 @@ def main():
     bcurve=[r['baseline_s'] for r in rows]
     scurve=[r['stoc_s'] for r in rows]
     acurve=[r['stoc_autotune_s'] for r in rows]
+    kcurve=[r['khop_s'] for r in rows]
     theo_base=[k_base*r['mlogn'] for r in rows]
     theo_stoc=[k_stoc*r['mlog23'] for r in rows]
     fig, ax1 = plt.subplots(figsize=(8,5))
@@ -131,8 +143,11 @@ def main():
         return means,stds
     bmeans, bstds = series_mean_std('baseline')
     smeans, sstds = series_mean_std('stoc')
+    kmeans, kstds = series_mean_std('khop') if any(r['khop_s'] for r in rows) else ([],[])
     ax1.errorbar(x,bmeans,yerr=bstds,fmt='o-',capsize=3,label='Baseline (mean±σ)')
     ax1.errorbar(x,smeans,yerr=sstds,fmt='d-',capsize=3,label='STOC fixed δ (mean±σ)')
+    if any(kcurve):
+        ax1.errorbar(x,kmeans,yerr=kstds,fmt='s-',capsize=3,label='K-HOP exp (mean±σ)')
     if any(a is not None for a in acurve):
         # Only plot where we have data
         ax=[r['n'] for r in rows if r['stoc_autotune_s'] is not None]

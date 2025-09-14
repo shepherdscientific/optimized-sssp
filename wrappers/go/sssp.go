@@ -21,6 +21,12 @@ int32_t sssp_run_stoc(uint32_t n, const uint32_t* offsets, const uint32_t* targe
 int32_t sssp_run_stoc_autotune(uint32_t n, const uint32_t* offsets, const uint32_t* targets,
                       const float* weights, uint32_t source, float* out_dist,
                       int32_t* out_pred, SsspResultInfo* info);
+int32_t sssp_run_khop(uint32_t n, const uint32_t* offsets, const uint32_t* targets,
+					  const float* weights, uint32_t source, float* out_dist,
+					  int32_t* out_pred, SsspResultInfo* info);
+int32_t sssp_run_default(uint32_t n, const uint32_t* offsets, const uint32_t* targets,
+					  const float* weights, uint32_t source, float* out_dist,
+					  int32_t* out_pred, SsspResultInfo* info);
 uint32_t sssp_version();
 */
 import "C"
@@ -43,7 +49,7 @@ type Stats struct {
 	Version          uint32
 }
 
-// Run executes a selected variant: 0 baseline, 1 stoc, 2 autotune.
+// Run executes a selected variant: 0 baseline, 1 stoc, 2 autotune, 3 batched (khop), 4 default alias (currently batched).
 func Run(n uint32, offsets, targets []uint32, weights []float32, source uint32, mode int) (Result, error) {
 	dist := make([]float32, n)
 	pred := make([]int32, n)
@@ -56,6 +62,10 @@ func Run(n uint32, offsets, targets []uint32, weights []float32, source uint32, 
 		rc = C.sssp_run_stoc(C.uint32_t(n), (*C.uint32_t)(unsafe.Pointer(&offsets[0])), (*C.uint32_t)(unsafe.Pointer(&targets[0])), (*C.float)(unsafe.Pointer(&weights[0])), C.uint32_t(source), (*C.float)(unsafe.Pointer(&dist[0])), (*C.int32_t)(unsafe.Pointer(&pred[0])), &info)
 	case 2:
 		rc = C.sssp_run_stoc_autotune(C.uint32_t(n), (*C.uint32_t)(unsafe.Pointer(&offsets[0])), (*C.uint32_t)(unsafe.Pointer(&targets[0])), (*C.float)(unsafe.Pointer(&weights[0])), C.uint32_t(source), (*C.float)(unsafe.Pointer(&dist[0])), (*C.int32_t)(unsafe.Pointer(&pred[0])), &info)
+	case 3:
+		rc = C.sssp_run_khop(C.uint32_t(n), (*C.uint32_t)(unsafe.Pointer(&offsets[0])), (*C.uint32_t)(unsafe.Pointer(&targets[0])), (*C.float)(unsafe.Pointer(&weights[0])), C.uint32_t(source), (*C.float)(unsafe.Pointer(&dist[0])), (*C.int32_t)(unsafe.Pointer(&pred[0])), &info)
+	case 4:
+		rc = C.sssp_run_default(C.uint32_t(n), (*C.uint32_t)(unsafe.Pointer(&offsets[0])), (*C.uint32_t)(unsafe.Pointer(&targets[0])), (*C.float)(unsafe.Pointer(&weights[0])), C.uint32_t(source), (*C.float)(unsafe.Pointer(&dist[0])), (*C.int32_t)(unsafe.Pointer(&pred[0])), &info)
 	default:
 		return Result{}, nil
 	}

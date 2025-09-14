@@ -1,9 +1,10 @@
-# Minimal Rust SSSP: Baseline Dijkstra vs Delta-Stepping ("STOC")
+# Minimal Rust SSSP: Baseline Dijkstra vs Delta-Stepping ("STOC") + Experimental K-Hop Frontier
 
-Repository intentionally reduced to a lean core for empirical study of two single-source shortest path variants:
+Repository intentionally reduced to a lean core for empirical study of shortest path variants:
 
 * Baseline: Binary-heap Dijkstra (reference)
-* STOC-style: Single-thread delta-stepping (light/heavy edge buckets) + optional autotuning of delta
+* STOC-style: Single-thread delta-stepping (light/heavy edge buckets) + optional autotuning & adaptive delta
+* Batched (Default): Grouped Dijkstra ("k-hop batch") – correctness-preserving heap pop batching (exported as `sssp_run_default`).
 
 All former native Go / C# / higher-layer algorithm variants have been removed to minimize noise. Python bindings remain only as a thin driver for benchmarking and scaling analysis.
 
@@ -22,7 +23,7 @@ implementations/
   rust/sssp_core/      # Core algorithms (C ABI)
   python/              # ctypes wrapper + benchmarks
 benchmarks/
-  benchmark_rust_variants.py  # Baseline vs STOC timing
+  benchmark_rust_variants.py  # Baseline vs STOC vs batched timing
   scaling_analysis.py         # Empirical scaling vs m·log n and m·log^{2/3} n
 docs/ (will be pruned further)
 ```
@@ -40,7 +41,7 @@ git clone <repo>
 cd optimized-sssp
 cargo build --release -p sssp_core
 python -m pip install -r requirements.txt  # if present / matplotlib optional
-python implementations/python/benchmark_rust_variants.py --sizes 2000,4000,8000 --density 2.0
+python benchmarks/benchmark_rust_variants.py --sizes 2000,4000,8000 --density 2.0
 python benchmarks/scaling_analysis.py --sizes 2000,4000,8000,16000,32000 --density 2.0 --repeat 3
 ```
 
@@ -92,6 +93,35 @@ Interpretation tips:
 Autotune vs Adaptive:
 * Autotune performs short probe runs to pick an initial multiplier (no mid-run adjustments).
 * Adaptive adjusts during the actual run—potentially cheaper upfront but may restart work. Both can coexist; pick based on your workload characteristics.
+
+## K-Hop Batched (Grouped Dijkstra) Variant
+
+Status: Correctness-preserving batching layer on top of classic Dijkstra. Instead of popping exactly one minimum-distance node each iteration, we pop up to K minimum keys (ties resolved naturally by heap ordering) and relax all their outgoing edges as a batch. This reduces heap push/pop interleaving overhead on workloads where many near-equal distance vertices accumulate. Because each vertex is only settled when popped from the global min-heap, distances remain identical to baseline Dijkstra (no speculative finishing as in the earlier prototype that was removed).
+
+Previous experimental frontier/pivot prototype was replaced after failing correctness tests on random graphs. The current implementation guarantees identical distances to the baseline for non-negative edge weights.
+
+### Environment Variable
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `SSSP_KHOP_K` | 32 | Maximum number of heap pops to batch per outer loop iteration. Increasing K amortizes heap operations; very large K can increase memory pressure. |
+
+### Characteristics
+* Produces exactly the same shortest-path distances and predecessors as baseline (verified on random graphs).
+* Simple knob (`K`) to explore trade-off between fewer heap operations vs potential cache locality effects.
+* Does not change asymptotic complexity: still O(m log n); practical constant factors may shift.
+* Currently no extra instrumentation beyond relaxation count; future: track batches, average batch utilization, heap ops avoided.
+
+### Example
+```bash
+SSSP_KHOP_K=64 \
+python benchmarks/benchmark_rust_variants.py --sizes 2000,4000,8000 --density 2.0
+```
+See `khop_ms` / `khop_speedup` for timing relative to baseline.
+
+Run the correctness probe (should show all OK):
+```bash
+python implementations/python/test_khop_correctness.py
+```
 
 ## Scaling Experiment Methodology
 We approximate m ≈ density · n (random graph generator). For each size n we measure wall time T_baseline and T_stoc, then compute normalized factors:

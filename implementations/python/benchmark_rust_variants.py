@@ -3,7 +3,7 @@ import time
 import math
 import argparse
 import json
-from rust_sssp import run_baseline, run_stoc
+from rust_sssp import run_baseline, run_stoc, run_khop
 
 # Simple random graph generator (uniform) producing CSR arrays
 # Nodes are 0..n-1; expected edges ~ density * n
@@ -52,6 +52,17 @@ def run_trial(n, density, seed):
         stoc_ms = None
         stoc_speedup = None
         stats_s = None
+    # K-HOP experimental
+    try:
+        tkh0 = time.perf_counter()
+        dist_k, pred_k, stats_k = run_khop(offsets, targets, weights, src)
+        tkh1 = time.perf_counter()
+        khop_ms = (tkh1 - tkh0) * 1000.0
+        khop_speedup = (t1 - t0) / (tkh1 - tkh0) if (tkh1 - tkh0) > 0 else None
+    except Exception:
+        khop_ms = None
+        khop_speedup = None
+        stats_k = None
 
     return {
         'n': n,
@@ -65,7 +76,10 @@ def run_trial(n, density, seed):
         'baseline_stats': stats_b,
     'optimized_stats': None,
     'hybrid_stats': None,
-    'stoc_stats': stats_s
+	'stoc_stats': stats_s,
+        'khop_ms': khop_ms,
+        'khop_speedup': khop_speedup,
+        'khop_stats': stats_k
     }
 
 
@@ -86,6 +100,8 @@ def main():
         msg = f"n={n} baseline={r['baseline_ms']:.2f}ms"
         if r['stoc_ms'] is not None:
             msg += f" stoc={r['stoc_ms']:.2f}ms stoc_spd={(r['stoc_speedup'] or 0):.2f}x"
+        if r.get('khop_ms') is not None:
+            msg += f" khop={r['khop_ms']:.2f}ms khop_spd={(r['khop_speedup'] or 0):.2f}x"
         print(msg)
         results.append(r)
 
@@ -105,6 +121,10 @@ def main():
         sxs = [r['n'] for r in results if r['stoc_ms'] is not None]
         sm = [r['stoc_ms'] for r in results if r['stoc_ms'] is not None]
         plt.plot(sxs, sm, marker='D', label='STOC (delta-step)')
+    if any(r.get('khop_ms') for r in results):
+        kxs = [r['n'] for r in results if r.get('khop_ms') is not None]
+        km = [r['khop_ms'] for r in results if r.get('khop_ms') is not None]
+        plt.plot(kxs, km, marker='s', label='K-HOP (exp)')
     plt.xlabel('Nodes (n)')
     plt.ylabel('Time (ms)')
     plt.title('Rust SSSP Variants Performance')
@@ -115,6 +135,10 @@ def main():
         sx2 = [r['n'] for r in results if r['stoc_speedup'] is not None]
         sp_s = [r['stoc_speedup'] for r in results if r['stoc_speedup'] is not None]
         ax2.plot(sx2, sp_s, color='orange', marker='D', linestyle='--', label='STOC speedup')
+    if any(r.get('khop_speedup') for r in results):
+        kx2 = [r['n'] for r in results if r.get('khop_speedup') is not None]
+        sp_k = [r['khop_speedup'] for r in results if r.get('khop_speedup') is not None]
+        ax2.plot(kx2, sp_k, color='green', marker='s', linestyle='--', label='K-HOP speedup')
     ax2.set_ylabel('Speedup (baseline / variant)')
     lines, labels = plt.gca().get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()

@@ -23,6 +23,10 @@ public static class RustSssp
     private static extern int sssp_run_stoc(uint n, IntPtr offsets, IntPtr targets, IntPtr weights, uint source, IntPtr out_dist, IntPtr out_pred, ref SsspResultInfo info);
     [DllImport(LIB, EntryPoint="sssp_run_stoc_autotune", CallingConvention=CallingConvention.Cdecl)]
     private static extern int sssp_run_stoc_autotune(uint n, IntPtr offsets, IntPtr targets, IntPtr weights, uint source, IntPtr out_dist, IntPtr out_pred, ref SsspResultInfo info);
+    [DllImport(LIB, EntryPoint="sssp_run_khop", CallingConvention=CallingConvention.Cdecl)]
+    private static extern int sssp_run_khop(uint n, IntPtr offsets, IntPtr targets, IntPtr weights, uint source, IntPtr out_dist, IntPtr out_pred, ref SsspResultInfo info);
+    [DllImport(LIB, EntryPoint="sssp_run_default", CallingConvention=CallingConvention.Cdecl)]
+    private static extern int sssp_run_default(uint n, IntPtr offsets, IntPtr targets, IntPtr weights, uint source, IntPtr out_dist, IntPtr out_pred, ref SsspResultInfo info);
     [DllImport(LIB, EntryPoint="sssp_version", CallingConvention=CallingConvention.Cdecl)]
     private static extern uint sssp_version();
 
@@ -45,7 +49,9 @@ public static class RustSssp
                 0 => sssp_run_baseline(n, hOff.AddrOfPinnedObject(), hTgt.AddrOfPinnedObject(), hWts.AddrOfPinnedObject(), source, hDist.AddrOfPinnedObject(), hPred.AddrOfPinnedObject(), ref info),
                 1 => sssp_run_stoc(n, hOff.AddrOfPinnedObject(), hTgt.AddrOfPinnedObject(), hWts.AddrOfPinnedObject(), source, hDist.AddrOfPinnedObject(), hPred.AddrOfPinnedObject(), ref info),
                 2 => sssp_run_stoc_autotune(n, hOff.AddrOfPinnedObject(), hTgt.AddrOfPinnedObject(), hWts.AddrOfPinnedObject(), source, hDist.AddrOfPinnedObject(), hPred.AddrOfPinnedObject(), ref info),
-                _ => throw new ArgumentException("invalid mode")
+                3 => sssp_run_khop(n, hOff.AddrOfPinnedObject(), hTgt.AddrOfPinnedObject(), hWts.AddrOfPinnedObject(), source, hDist.AddrOfPinnedObject(), hPred.AddrOfPinnedObject(), ref info),
+                4 => sssp_run_default(n, hOff.AddrOfPinnedObject(), hTgt.AddrOfPinnedObject(), hWts.AddrOfPinnedObject(), source, hDist.AddrOfPinnedObject(), hPred.AddrOfPinnedObject(), ref info),
+                _ => throw new ArgumentException("invalid mode (0=baseline,1=stoc,2=autotune,3=khop_batch,4=default)")
             };
             if (rc != 0) throw new InvalidOperationException($"Rust core returned error {rc}");
             return new Result(dist, pred, info, sssp_version());
