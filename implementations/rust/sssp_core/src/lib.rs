@@ -533,3 +533,5 @@ pub extern "C" fn sssp_run_stoc_auto_adapt(
     if prev.is_none() { std::env::remove_var(env_key); }
     rc
 }
+
+mod spec_clean; // brings in sssp_run_spec_clean symbol (#[no_mangle])
