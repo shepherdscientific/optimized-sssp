@@ -1,153 +1,168 @@
-# Minimal Rust SSSP: Baseline Dijkstra vs Delta-Stepping ("STOC")
-
-Repository intentionally reduced to a lean core for empirical study of two single-source shortest path variants:
-
-* Baseline: Binary-heap Dijkstra (reference)
-* STOC-style: Single-thread delta-stepping (light/heavy edge buckets) + optional autotuning of delta
-
-All former native Go / C# / higher-layer algorithm variants have been removed to minimize noise. Python bindings remain only as a thin driver for benchmarking and scaling analysis.
-
-## Algorithm Complexity
-
-| Algorithm | Time Complexity | Space Complexity | Notes |
-|-----------|----------------|------------------|-------|
-| **Optimized SSSP** | **O(m log^(2/3) n)** | O(n + m) | Our implementation |
-| Dijkstra | O((n + m) log n) | O(n + m) | Classical reference |
-| Bellman-Ford | O(nm) | O(n + m) | Handles negative weights |
-| SPFA | O(nm) worst-case | O(n + m) | Average case better |
-
-## Current Layout (Trimmed)
-```
-implementations/
-  rust/sssp_core/      # Core algorithms (C ABI)
-  python/              # ctypes wrapper + benchmarks
-benchmarks/
-  benchmark_rust_variants.py  # Baseline vs STOC timing
-  scaling_analysis.py         # Empirical scaling vs m·log n and m·log^{2/3} n
 docs/ (will be pruned further)
-```
-
-## Quick Start
-
-### Prerequisites
-
-* Rust (stable) – build core library
-* Python 3.10+ – run benchmarks (ctypes wrapper)
-
-### Quick Start
-```bash
-git clone <repo>
-cd optimized-sssp
-cargo build --release -p sssp_core
-python -m pip install -r requirements.txt  # if present / matplotlib optional
-python implementations/python/benchmark_rust_variants.py --sizes 2000,4000,8000 --density 2.0
-python benchmarks/scaling_analysis.py --sizes 2000,4000,8000,16000,32000 --density 2.0 --repeat 3
-```
-
-### Go Implementation
-
-```bash
-cd implementations/go
 go mod tidy
 go run cmd/benchmark/main.go --help
+# Optimized SSSP (Clean Spec Implementation)
+
+From classical Dijkstra toward a structured path for O(m log^{2/3} n).
+
+Current focus: parity core + instrumentation. (Former delta-stepping code is legacy only.)
+
+## 1. Purpose
+This repository is a clean-room trajectory toward an eventually layered BMSSP-style single-source shortest path algorithm targeting the theoretical O(m log^{2/3} n) bound. We start from a rigorously instrumented, parity-correct MinHeap Dijkstra (`spec_clean`) and will introduce one structural mechanism per phase (pivots, bounded recursion, batched prepends, selective frontier growth) with empirical and invariant checks at each step.
+
+## 2. What Exists Right Now
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Baseline binary-heap Dijkstra | ✅ Stable | Reference correctness oracle |
+| `spec_clean` (custom min-heap) | ✅ Parity | ~1–6% constant-factor improvement; identical relax counts |
+| Heap instrumentation (pushes/pops/max) | ✅ | Guides structural comparisons |
+| Benchmark (baseline vs spec) + overlays | ✅ | Produces JSON + plot + speedup axis |
+| Statistical grid benchmark & heatmap | ✅ (script) | Captures variation across (n,density) |
+| BMSSP hierarchical mechanics | ⏳ Not started | Will be layered incrementally |
+| Pivot selection / wave gathering | ⏳ | Maps to FindPivots in spec snapshot |
+| Bounded multi-level recursion (l,t,k) | ⏳ | Core of theoretical improvement |
+| BatchPrepend / segmented DS `D` | ⏳ | Needed for amortized bounds |
+
+## 3. Spec Snapshot (Canonical Target)
+See `docs/SSSP_SPEC_SNAPSHOT.md` (frozen). Mermaid summary of the recursive BMSSP skeleton:
+
+```mermaid
+flowchart TD
+  Start[BMSSP Start] --> Check{Level zero?}
+  Check -- yes --> Base[BaseCase truncated]
+  Check -- no --> Pivots[Find pivots]
+  Pivots --> InitD[Init structure D]
+  InitD --> Loop{D not empty AND under limit}
+  Loop --> Pull[Pull block]
+  Pull --> Recurse[Recurse level-1]
+  Recurse --> Relax[Relax edges]
+  Relax --> Insert[Insert future]
+  Insert --> Batch[Batch prepend]
+  Batch --> Loop
+  Loop -- done --> Done[Return Result]
 ```
 
-## Delta-Stepping Summary
-Delta-stepping groups edges by weight threshold (delta). Within a bucket index b = floor(dist/δ):
-1. Repeated light-edge relaxations (w ≤ δ) until closure.
-2. Single heavy-edge pass (w > δ) to schedule future buckets.
-Choosing δ poorly can increase bucket count or internal churn; autotune probes several multipliers of sampled average edge weight on a truncated run to pick a winner.
+Key bounded parameters (from snapshot):
+```text
+k = floor(log^{1/3} n)
+t = floor(log^{2/3} n)
+Level l frontier limit: |S| ≤ 2^{l t}
+Pull capacity M = 2^{(l-1) t}
+```
 
-### Adaptive Delta (In-Run Adjustment)
-The `sssp_run_stoc` path now contains an adaptive loop (distinct from autotune) that can dynamically shrink or expand δ during the run based on the observed heavy-edge relaxation ratio. Goal: keep heavy edges within a target band to avoid pathological all-light (δ too small) or heavy-saturated (δ too large) behavior.
+## 4. Gap Analysis: Current vs Spec
+| Spec Element | Needed For | Implemented? | Planned Phase |
+|--------------|-----------|--------------|---------------|
+| Equality relax (<=) invariant | Tight forest reuse | ✅ (baseline & spec_clean) | — |
+| BaseCase truncated growth (k+1 guard) | Size control | ❌ | Phase 1 (next) |
+| Pivot discovery (k waves / BF style) | Shrink frontier | ❌ | Phase 2 |
+| Forest root filtering (≥ k subtree) | Bound pivot count | ❌ | Phase 2 |
+| Data structure D (Pull / BatchPrepend) | Amortized selection | ❌ | Phase 3 |
+| Boundary B'/B management chain | Disjoint U_i sets | ❌ | Phase 3 |
+| Multi-level recursion l=0..L | Hierarchical scaling | ❌ | Phase 4 |
+| Invariant checks (S-size, dependency) | Safety proofs | ❌ | Ongoing (each phase) |
+| Instrumented counters per recursion | Empirical validation | ❌ | Phase 4 |
 
-Key environment variables:
+## 5. Benchmarks
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `SSSP_STOC_HEAVY_MIN_RATIO` | 0.05 | Lower acceptable heavy relax ratio (fraction of relaxations). |
-| `SSSP_STOC_HEAVY_MAX_RATIO` | 0.25 | Upper acceptable heavy relax ratio. |
-| `SSSP_STOC_ADAPT_MAX_RESTARTS` | 4 | Max restarts (δ adjustments) during one run. |
-| `SSSP_STOC_ADAPT_TRIGGER` | log(n)/2 rounded, clamped [3,40] | Min buckets visited before evaluating adjustment conditions. Override to tune aggressiveness. |
-| `SSSP_STOC_DELTA_MODE` | "avg" | Initial δ strategy: `avg` or `quantile`. |
-| `SSSP_STOC_DELTA_MULT` | 3.0 (avg) / 1.0 (quantile) | Multiplier applied to base δ estimate. |
-| `SSSP_STOC_HEAVY_TARGET` | 0.15 | Only for `quantile` mode: selects (1 - target) quantile as base δ. |
+### 5.1 Sample (Parity Range)
+![Sample Baseline vs Spec](benchmarks/rust_spec_baseline_sample.png)
 
-Adjustment rules (simplified):
-* After `SSSP_STOC_ADAPT_TRIGGER` non-empty buckets: compute heavy_ratio = heavy_relax / total_relax.
-* If heavy_relax = 0: shrink δ by 0.5 (force creation of heavier edges) and restart (within max restarts).
-* Else if heavy_ratio < min: shrink δ moderately (×0.7) and restart.
-* Else if heavy_ratio > max: expand δ (×1.5) and restart.
-* Otherwise proceed to completion.
+| n | m | Baseline ms | Spec ms | Speedup |
+|---|---|-------------|---------|---------|
+| 25,000 | 49,996 | 22.39 | 22.06 | 1.015x |
+| 50,000 | 99,996 | 47.63 | 47.09 | 1.012x |
+| 100,000 | 199,998 | 116.81 | 111.53 | 1.047x |
+| 250,000 | 499,996 | 343.90 | 334.29 | 1.029x |
+| 500,000 | 999,998 | 746.58 | 702.16 | 1.063x |
+| 1,000,000 | 1,999,999 | 1,549.55 | 1,501.69 | 1.032x |
 
-Instrumentation exported (available after STOC run):
-* `sssp_get_last_delta()` – final δ after adjustments.
-* `sssp_get_bucket_stats()` -> `SsspBucketStats { buckets_visited, light_pass_repeats, max_bucket_index, restarts, delta_x1000, heavy_ratio_x1000 }`.
+### 5.2 Extended (Larger Sizes)
+![Large Benchmark](benchmarks/rust_spec_baseline_big.png)
 
-Interpretation tips:
-* `restarts` > 0 means adaptive logic adjusted δ; excessive restarts may indicate very skewed weight distribution.
-* A heavy_ratio near the lower bound suggests δ might still be large (many light closures before encountering heavy edges). Near the upper bound indicates frequent heavy deferrals that could bloat bucket space.
-* `light_pass_repeats / buckets_visited` gives average intra-bucket closure iterations (higher may imply many cascading light relaxations—beneficial if it reduces future bucket work).
+| n | m | Baseline ms | Spec ms | Speedup |
+|---|---|-------------|---------|---------|
+| 25,000 | 49,996 | 21.48 | 21.74 | 0.99x |
+| 50,000 | 99,996 | 47.29 | 46.66 | 1.01x |
+| 100,000 | 199,998 | 124.87 | 112.23 | 1.11x |
+| 250,000 | 499,996 | 343.51 | 327.77 | 1.05x |
+| 500,000 | 999,998 | 720.15 | 706.19 | 1.02x |
+| 1,000,000 | 1,999,999 | 1541.73 | 1503.30 | 1.03x |
+| 2,500,000 | 4,999,999 | 3424.53 | 3331.04 | 1.03x |
+| 5,000,000 | 9,999,999 | 7032.10 | 6909.83 | 1.02x |
+| 10,000,000 | 19,999,998 | 21555.25 | 18749.72 | 1.15x |
 
-Autotune vs Adaptive:
-* Autotune performs short probe runs to pick an initial multiplier (no mid-run adjustments).
-* Adaptive adjusts during the actual run—potentially cheaper upfront but may restart work. Both can coexist; pick based on your workload characteristics.
+Observed speedup pattern: modest (1.0–1.06x typical) with occasional higher outlier at largest n (cache residency & branch profile effects). No asymptotic change expected yet.
 
-## Scaling Experiment Methodology
-We approximate m ≈ density · n (random graph generator). For each size n we measure wall time T_baseline and T_stoc, then compute normalized factors:
+### 5.3 Statistical Grid & Heatmap
+Scripts produce heatmaps summarizing median speedup across (n,density). Example placeholders (regenerate via statistical script):
 
-* Baseline factor: T_baseline / (m log n)
-* STOC factor: T_stoc / (m (log n)^{2/3})
+Random small sampling heatmap:
+![Speedup Heatmap (Sample)](benchmarks/stat_full_heatmap.png)
 
-If factors remain roughly stable (low max/min ratio) across growing n, empirical behavior is consistent with the respective asymptotic forms (not a proof, but a sanity check).
+Larger run heatmap:
+![Speedup Heatmap (Large)](benchmarks/stat_full_heatmap_big.png)
 
-## Example Invocation
+## 6. Reproduce Benchmarks
 ```bash
-python benchmarks/scaling_analysis.py --sizes 4000,8000,16000,32000,64000 --density 2.0 --repeat 2
-```
-Outputs JSON with per-size timing and normalized factors plus a summary.
+cargo build --release -p sssp_core
+python implementations/python/benchmark_rust_variants.py \
+  --sizes 25000,50000,100000,250000,500000,1000000 \
+  --density 2.0 --seed 42 \
+  --output benchmarks/rust_spec_baseline_sample.json \
+  --plot benchmarks/rust_spec_baseline_sample.png
 
-## Performance Plot
-Generated figure (example) combining baseline, fixed-δ STOC, and autotuned STOC (log-log):
-
-![Performance Plot](benchmarks/performance.png)
-
-Reproduce (moderate sizes):
-```bash
-python benchmarks/plot_performance.py \
-  --sizes 4000,8000,16000,32000,64000,128000 \
-  --density 2.0 --repeat 2 --output benchmarks/performance.png
-```
-
-Include autotune (default) or skip it:
-```bash
-python benchmarks/plot_performance.py --sizes 4000,8000,16000 --no-autotune
+# Extended sizes
+python implementations/python/benchmark_rust_variants.py \
+  --sizes 25000,50000,100000,250000,500000,1000000,2500000,5000000,10000000 \
+  --density 2.0 --seed 42 \
+  --output benchmarks/rust_spec_baseline_big.json \
+  --plot benchmarks/rust_spec_baseline_big.png
 ```
 
-Large scale (may take longer; consider lowering repeat):
-```bash
-python benchmarks/plot_performance.py \
-  --sizes 16000,32000,64000,128000,256000,512000,1000000 \
-  --density 1.5 --repeat 1 --output benchmarks/performance.png
+## 7. Instrumentation Snapshot
+Example JSON fields (per size):
+```jsonc
+{
+  "baseline_ms": 1541.73,
+  "spec_ms": 1503.30,
+  "spec_speedup": 1.03,
+  "baseline_heap": { "pushes": 839761, "pops": 839761, "max_size": 164079 },
+  "spec_heap": { "pushes": 839761, "pops": 839761, "max_size": 164079 }
+}
 ```
-Autotune knobs exposed:
-* `--autotune-set` -> `SSSP_STOC_AUTOTUNE_SET` (multipliers of estimated δ)
-* `--autotune-limit` -> `SSSP_STOC_AUTOTUNE_LIMIT` (truncation threshold for probe runs)
+Heap identity confirms no structural optimization applied yet—future phases should drive divergence (reduced pushes or lower max_size plateau) or justify conceptual changes.
 
-In CI the script automatically caps size via `--ci-max-n` (default 128k) when `CI=1` to keep runtime bounded.
+## 8. Development Roadmap (Rolling)
+1. Implement BaseCase truncation & k parameter wiring.
+2. Add pivot wave primitive (bounded k relax waves) + subtree sizing.
+3. Prototype minimal D with Pull + BatchPrepend; measure overhead vs pure heap.
+4. Integrate multi-level recursion, verifying invariants after each level with debug asserts.
+5. Add instrumentation counters per level: pulls, batch prepends, successful pivots, truncated basecases.
+6. Statistical validation: track growth of |U| per level vs theoretical caps.
+7. Optimization passes: memory pooling, distance type specialization, adjacency ordering.
 
-## Interpreting Results
-* Expect Dijkstra baseline factor to be relatively flat; large variance may indicate memory/cache artifacts.
-* STOC variant may not always outperform; delta-stepping benefits structure (weight distribution & locality). Random graphs may show modest gains or overhead.
-* Autotuning can reduce factor drift when a single fixed multiplier is suboptimal across scales.
-* Heavy ratio band: If heavy ratio consistently clips at bounds, consider widening (`HEAVY_MIN_RATIO`, `HEAVY_MAX_RATIO`) or increasing `ADAPT_MAX_RESTARTS` to allow more exploration.
+## 9. How Close Are We?
+Current work corresponds to a “Level 0 always” regime: we run a full unrestricted Dijkstra (effectively BaseCase without truncation) every time. The theoretical improvements rely on constraining growth and layering dependent exploration. Thus: we are at Step 0 structurally, with instrumentation prepared to observe changes as soon as truncation & pivot phases land.
 
-## Contributing
-Focus is on correctness & clarity of the two variants. PRs adding back multi-language complexity will be declined; improvements to delta selection, instrumentation, or rigorous scaling analysis welcome.
+## 10. Legacy / Deprecated (STOC Path)
+Delta-stepping code remains only for historical comparison and will not evolve further in this branch. It may be entirely removed once BMSSP phases demonstrate stable improvement. Treat any STOC references as archival.
 
-## License
+## 11. Contributing
+Please limit changes to:
+* Parity-preserving enhancements (faster heap, memory layout) WITH instrumentation deltas.
+* Incremental BMSSP phase implementations following snapshot.
+* Improved benchmark/statistical tooling.
 
-MIT License - see [LICENSE](LICENSE) for details.
+Out of scope: reintroducing multi-language scaffolding or unrelated algorithm variants at this stage.
 
-## Acknowledgments
-Delta-stepping reference: Meyer & Sanders (Journal of Algorithms 2003). This repo implements a simplified single-threaded form for exploratory benchmarking.
+## 12. License
+MIT License – see [LICENSE](LICENSE).
+
+## 13. References
+* BMSSP / hierarchical SSSP theoretical notes (internal snapshot): `docs/SSSP_SPEC_SNAPSHOT.md`
+* Classical Dijkstra analysis
+* Planned empirical methodology (statistical scripts under `benchmarks/`)
+
+---
+<sub>Spec version synchronized with snapshot commit; update requires explicit snapshot delta + version bump.</sub>
