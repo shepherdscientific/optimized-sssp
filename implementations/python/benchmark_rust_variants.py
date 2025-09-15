@@ -4,6 +4,7 @@ import math
 import argparse
 import json
 from rust_sssp import run_baseline, _HAS_SPEC_CLEAN, run_spec_clean
+from rust_sssp import get_baseline_heap_stats, get_spec_heap_stats  # added
 
 # Simple random graph generator (uniform) producing CSR arrays
 # Nodes are 0..n-1; expected edges ~ density * n
@@ -42,16 +43,19 @@ def run_trial(n, density, seed, verify_spec=True):
     t0 = time.perf_counter()
     dist_b, pred_b, stats_b = run_baseline(offsets, targets, weights, src)
     t1 = time.perf_counter()
+    base_heap = get_baseline_heap_stats()
     spec_ms = None
     spec_speedup = None
     spec_stats = None
     spec_parity_ok = None
+    spec_heap = None
     if _HAS_SPEC_CLEAN:
         t_spec0 = time.perf_counter()
         dist_spec, pred_spec, spec_stats = run_spec_clean(offsets, targets, weights, src)
         t_spec1 = time.perf_counter()
         spec_ms = (t_spec1 - t_spec0) * 1000.0
         spec_speedup = (t1 - t0) / (t_spec1 - t_spec0) if (t_spec1 - t_spec0) > 0 else None
+        spec_heap = get_spec_heap_stats()
         if verify_spec:
             # Parity: distances identical (allow tiny float epsilon)
             mismatches = [i for i,(db,ds) in enumerate(zip(dist_b, dist_spec)) if abs(db-ds) > 1e-6 or (math.isinf(db) != math.isinf(ds))]
@@ -68,7 +72,9 @@ def run_trial(n, density, seed, verify_spec=True):
         'spec_parity_ok': spec_parity_ok,
         'baseline_stats': stats_b,
         'spec_stats': spec_stats,
-    'spec_only': True
+        'baseline_heap': base_heap,
+        'spec_heap': spec_heap,
+        'spec_only': True
     }
 
 
@@ -87,10 +93,14 @@ def main():
     for n in sizes:
         r = run_trial(n, args.density, args.seed)
         msg = f"n={n} base={r['baseline_ms']:.2f}ms"
+        if r.get('baseline_heap') and r['baseline_heap'].get('max_size') is not None:
+            msg += f" baseH={r['baseline_heap']['max_size']}"
         if r.get('spec_ms') is not None:
             msg += f" spec={r['spec_ms']:.2f}ms"
             if r.get('spec_speedup') is not None:
                 msg += f" spec_spd={(r['spec_speedup'] or 0):.2f}x"
+            if r.get('spec_heap') and r['spec_heap'] and r['spec_heap'].get('max_size') is not None:
+                msg += f" specH={r['spec_heap']['max_size']}"
             if r.get('spec_parity_ok') is not None:
                 msg += " parity=OK" if r['spec_parity_ok'] else " parity=FAIL"
         print(msg)

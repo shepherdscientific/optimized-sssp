@@ -65,21 +65,24 @@ _HAS_BASE_HEAP = hasattr(_lib,'sssp_get_baseline_heap_stats')
 if _HAS_BASE_HEAP:
     _lib.sssp_get_baseline_heap_stats.argtypes=[ctypes.POINTER(_BaselineHeapStats)]
 
+# Spec heap stats
+class _SpecHeapStats(ctypes.Structure):
+    _fields_=[('pushes',ctypes.c_uint64),('pops',ctypes.c_uint64),('max_size',ctypes.c_uint64)]
+_HAS_SPEC_HEAP = hasattr(_lib,'sssp_get_spec_heap_stats')
+if _HAS_SPEC_HEAP:
+    _lib.sssp_get_spec_heap_stats.argtypes=[ctypes.POINTER(_SpecHeapStats)]
+
 def get_baseline_heap_stats():
     if not _HAS_BASE_HEAP:
         return None
     hs=_BaselineHeapStats(); _lib.sssp_get_baseline_heap_stats(ctypes.byref(hs))
     return {'pushes': hs.pushes, 'pops': hs.pops, 'max_size': hs.max_size}
-    bs=_BucketStats(); _lib.sssp_get_bucket_stats(ctypes.byref(bs))
-    return {
-        'buckets_visited': bs.buckets_visited,
-        'light_pass_repeats': bs.light_pass_repeats,
-        'max_bucket_index': bs.max_bucket_index,
-        'restarts': bs.restarts,
-        'delta': bs.delta_x1000 / 1000.0,
-        'heavy_ratio': bs.heavy_ratio_x1000 / 1000.0,
-    }
 
+def get_spec_heap_stats():
+    if not _HAS_SPEC_HEAP:
+        return None
+    hs=_SpecHeapStats(); _lib.sssp_get_spec_heap_stats(ctypes.byref(hs))
+    return {'pushes': hs.pushes, 'pops': hs.pops, 'max_size': hs.max_size}
 
 def run_baseline(offsets, targets, weights, source: int):
     return _run(offsets, targets, weights, source, False)
