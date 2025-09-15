@@ -46,6 +46,23 @@ _HAS_SPEC_CLEAN = hasattr(_lib, 'sssp_run_spec_clean')
 if _HAS_SPEC_CLEAN:
     _lib.sssp_run_spec_clean.restype = ctypes.c_int32
     _lib.sssp_run_spec_clean.argtypes = _lib.sssp_run_baseline.argtypes
+_HAS_BASECASE_PROBE = hasattr(_lib, 'sssp_spec_basecase_probe')
+if _HAS_BASECASE_PROBE:
+    class _BaseCaseResult(ctypes.Structure):
+        _fields_=[('outcome',ctypes.c_int32),('new_bound',ctypes.c_float),('collected',ctypes.c_uint32)]
+    _lib.sssp_spec_basecase_probe.restype = ctypes.c_int32
+    _lib.sssp_spec_basecase_probe.argtypes = [
+        ctypes.c_uint32,                             # n
+        ctypes.POINTER(ctypes.c_uint32),             # offsets
+        ctypes.POINTER(ctypes.c_uint32),             # targets
+        ctypes.POINTER(ctypes.c_float),              # weights
+        ctypes.c_uint32,                             # start
+        ctypes.c_uint32,                             # k
+        ctypes.c_float,                              # bound
+        ctypes.POINTER(ctypes.c_float),              # dist
+        ctypes.POINTER(ctypes.c_int32),              # pred
+        ctypes.POINTER(_BaseCaseResult)              # result
+    ]
 _lib.sssp_version.restype = ctypes.c_uint32
 
 # Optional bucket stats FFI
@@ -112,6 +129,63 @@ def run_spec_clean(offsets, targets, weights, source: int):
     if not _HAS_SPEC_CLEAN:
         raise RuntimeError('spec_clean function not available in loaded library')
     return _run(offsets, targets, weights, source, 'spec_clean')
+
+def run_spec_basecase_probe(offsets, targets, weights, source: int, bound: float, k: int|None=None):
+    if not _HAS_BASECASE_PROBE:
+        raise RuntimeError('basecase probe not available in loaded library')
+    n = len(offsets) - 1
+    if k is None:
+        # k = max(2, floor((ln n)^{1/3})) similar to planned spec (small, monotonic)
+        k = max(2, int(math.log(max(2,n)) ** (1.0/3.0)))
+    OffArr = (ctypes.c_uint32 * (n + 1))(*offsets)
+    m = len(targets)
+    assert len(weights) == m
+    TgtArr = (ctypes.c_uint32 * m)(*targets)
+    WArr = (ctypes.c_float * m)(*weights)
+    DistArr = (ctypes.c_float * n)()
+    PredArr = (ctypes.c_int32 * n)()
+    res = _BaseCaseResult()
+    rc = _lib.sssp_spec_basecase_probe(n, OffArr, TgtArr, WArr, source, k, float(bound), DistArr, PredArr, ctypes.byref(res))
+    if rc != 0:
+        raise RuntimeError(f"basecase probe error rc={rc}")
+    distances = [DistArr[i] for i in range(n)]
+    preds = [PredArr[i] for i in range(n)]
+    # Keep only finite distances < new_bound if truncated (mirror Rust enforcement)
+    if res.outcome == 1:
+        for i,d in enumerate(distances):
+            if not math.isfinite(d) or d >= res.new_bound:
+                distances[i] = math.inf
+                preds[i] = -1
+    return {
+        'outcome': 'Truncated' if res.outcome==1 else 'Success',
+        'new_bound': float(res.new_bound),
+        'collected': int(res.collected),
+        'k': int(k),
+        'dist': distances,
+        'pred': preds,
+    }
+
+def validate_basecase_prefix(full_dist: List[float], probe_result: Dict) -> Dict:
+    """Validate that for every vertex with finite probe distance we match full spec_clean distance.
+    Returns summary with mismatches count and max_abs_error.
+    """
+    pd = probe_result['dist']
+    mismatches = 0
+    max_err = 0.0
+    for i,(a,b) in enumerate(zip(pd, full_dist)):
+        if math.isfinite(a):
+            if not math.isfinite(b):
+                mismatches += 1
+            else:
+                err = abs(a-b)
+                if err > 1e-6:
+                    mismatches += 1
+                    if err>max_err: max_err=err
+    return {
+        'checked': sum(1 for x in pd if math.isfinite(x)),
+        'mismatches': mismatches,
+        'max_abs_error': max_err,
+    }
 
 def _run(offsets, targets, weights, source: int, mode):
     n = len(offsets) - 1

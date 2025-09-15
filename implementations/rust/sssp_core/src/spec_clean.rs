@@ -75,3 +75,117 @@ pub extern "C" fn sssp_run_spec_clean(
     if !info.is_null(){ unsafe { *info = crate::SsspResultInfo { relaxations: relax, light_relaxations:0, heavy_relaxations:0, settled: n, error_code:0 }; } }
     0
 }
+
+#[derive(Copy,Clone,Debug,PartialEq,Eq)]
+pub enum BaseCaseOutcome {
+    Success,      // collected < k+1 vertices (no truncation)
+    Truncated,    // hit k+1 limit; distances ≥ new_bound are excluded
+}
+
+#[repr(C)]
+pub struct BaseCaseResult {
+    pub outcome: i32,      // 0=Success, 1=Truncated
+    pub new_bound: f32,    // B' (if truncated B' = max_dist_in_prefix, else original bound)
+    pub collected: u32,    // |U|
+}
+
+pub fn basecase_truncated(
+    n: u32,
+    off: &[u32], tgt:&[u32], wts:&[f32],
+    start: u32,
+    k: u32,
+    initial_bound: f32,
+    dist: &mut [f32],
+    pred: &mut [i32],
+    scratch: &mut Vec<u32>,
+) -> BaseCaseResult {
+    // Reset (caller may reuse arrays)
+    for d in dist.iter_mut() { *d = f32::INFINITY; }
+    for p in pred.iter_mut() { *p = -1; }
+
+    // Simple binary-heap (reuse spec_clean’s heap H if desired; inline minimal here)
+    #[derive(Copy,Clone)] struct Item { u:u32, d:f32 }
+    impl PartialEq for Item { fn eq(&self, o:&Self)->bool { self.d == o.d && self.u==o.u } }
+    impl Eq for Item {}
+    impl PartialOrd for Item { fn partial_cmp(&self,o:&Self)->Option<std::cmp::Ordering>{ o.d.partial_cmp(&self.d) } }
+    impl Ord for Item { fn cmp(&self,o:&Self)->std::cmp::Ordering { self.partial_cmp(o).unwrap() } }
+
+    use std::collections::BinaryHeap;
+    let mut pq = BinaryHeap::new();
+    dist[start as usize] = 0.0;
+    pq.push(Item{u:start,d:0.0});
+    scratch.clear();
+
+    let mut popped = 0u32;
+    let mut max_seen = 0.0f32;
+    let mut truncated = false;
+
+    while let Some(Item{u,d}) = pq.pop() {
+        if d > dist[u as usize] { continue; }
+        if d > initial_bound { break; } // respect incoming bound B
+        scratch.push(u);
+        popped += 1;
+        if d > max_seen { max_seen = d; }
+        if popped == k + 1 {
+            truncated = true;
+            break;
+        }
+        // Relax
+        let ui = u as usize;
+        let start_e = off[ui] as usize;
+        let end_e = off[ui+1] as usize;
+        for e in start_e..end_e {
+            let v = tgt[e] as usize;
+            let nd = d + wts[e];
+            if nd <= dist[v] && nd <= initial_bound {
+                dist[v] = nd;
+                pred[v] = u as i32;
+                pq.push(Item{u: v as u32, d: nd});
+            }
+        }
+    }
+
+    // If truncated: new bound B' = max distance among collected excluding the last overflow rule:
+    let new_bound = if truncated { max_seen } else { initial_bound };
+
+    // If truncated, enforce U = { v : dist[v] < B' }
+    if truncated {
+        for &u in scratch.iter() {
+            if dist[u as usize] >= new_bound {
+                dist[u as usize] = f32::INFINITY;
+                pred[u as usize] = -1;
+            }
+        }
+    }
+
+    BaseCaseResult {
+        outcome: if truncated { 1 } else { 0 },
+        new_bound,
+        collected: scratch.iter().filter(|&&u| dist[u as usize].is_finite()).count() as u32,
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn sssp_spec_basecase_probe(
+    n: u32,
+    offsets: *const u32,
+    targets: *const u32,
+    weights: *const f32,
+    start: u32,
+    k: u32,
+    bound: f32,
+    dist_ptr: *mut f32,
+    pred_ptr: *mut i32,
+    result_out: *mut BaseCaseResult,
+) -> i32 {
+    let off = unsafe { as_slice(offsets, n as usize + 1) };
+    let m = off[n as usize] as usize;
+    let tgt = unsafe { as_slice(targets, m) };
+    let wts = unsafe { as_slice(weights, m) };
+    let dist = unsafe { as_mut_slice(dist_ptr, n as usize) };
+    let pred = unsafe { as_mut_slice(pred_ptr, n as usize) };
+    let mut tmp: Vec<u32> = Vec::with_capacity(k as usize + 2);
+    let res = basecase_truncated(n, off, tgt, wts, start, k, bound, dist, pred, &mut tmp);
+    unsafe { *result_out = res; }
+    0
+}
