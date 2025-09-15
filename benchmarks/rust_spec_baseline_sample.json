@@ -1,0 +1,254 @@
+{
+  "config": {
+    "sizes": [
+      25000,
+      50000,
+      100000,
+      250000,
+      500000,
+      1000000
+    ],
+    "density": 2.0,
+    "seed": 42
+  },
+  "results": [
+    {
+      "n": 25000,
+      "density": 2.0,
+      "m": 49996,
+      "baseline_ms": 22.39137500146171,
+      "spec_ms": 22.06353299698094,
+      "spec_speedup": 1.0148589985350773,
+      "spec_parity_ok": true,
+      "baseline_stats": {
+        "relaxations": 21097,
+        "light_relaxations": 0,
+        "heavy_relaxations": 0,
+        "settled": 25000,
+        "version": 4,
+        "variant": "baseline"
+      },
+      "spec_stats": {
+        "relaxations": 21097,
+        "light_relaxations": 0,
+        "heavy_relaxations": 0,
+        "settled": 25000,
+        "version": 4,
+        "variant": "spec_clean"
+      },
+      "baseline_heap": {
+        "pushes": 21098,
+        "pops": 21098,
+        "max_size": 4139
+      },
+      "spec_heap": {
+        "pushes": 21098,
+        "pops": 21098,
+        "max_size": 4139
+      },
+      "spec_only": true
+    },
+    {
+      "n": 50000,
+      "density": 2.0,
+      "m": 99996,
+      "baseline_ms": 47.62949100404512,
+      "spec_ms": 47.08589700021548,
+      "spec_speedup": 1.011544730767838,
+      "spec_parity_ok": true,
+      "baseline_stats": {
+        "relaxations": 41852,
+        "light_relaxations": 0,
+        "heavy_relaxations": 0,
+        "settled": 50000,
+        "version": 4,
+        "variant": "baseline"
+      },
+      "spec_stats": {
+        "relaxations": 41852,
+        "light_relaxations": 0,
+        "heavy_relaxations": 0,
+        "settled": 50000,
+        "version": 4,
+        "variant": "spec_clean"
+      },
+      "baseline_heap": {
+        "pushes": 41853,
+        "pops": 41853,
+        "max_size": 8250
+      },
+      "spec_heap": {
+        "pushes": 41853,
+        "pops": 41853,
+        "max_size": 8250
+      },
+      "spec_only": true
+    },
+    {
+      "n": 100000,
+      "density": 2.0,
+      "m": 199998,
+      "baseline_ms": 116.81186899659224,
+      "spec_ms": 111.52854200190632,
+      "spec_speedup": 1.047371972231069,
+      "spec_parity_ok": true,
+      "baseline_stats": {
+        "relaxations": 84173,
+        "light_relaxations": 0,
+        "heavy_relaxations": 0,
+        "settled": 100000,
+        "version": 4,
+        "variant": "baseline"
+      },
+      "spec_stats": {
+        "relaxations": 84173,
+        "light_relaxations": 0,
+        "heavy_relaxations": 0,
+        "settled": 100000,
+        "version": 4,
+        "variant": "spec_clean"
+      },
+      "baseline_heap": {
+        "pushes": 84174,
+        "pops": 84174,
+        "max_size": 16697
+      },
+      "spec_heap": {
+        "pushes": 84174,
+        "pops": 84174,
+        "max_size": 16697
+      },
+      "spec_only": true
+    },
+    {
+      "n": 250000,
+      "density": 2.0,
+      "m": 499996,
+      "baseline_ms": 343.89914700295776,
+      "spec_ms": 334.2934519969276,
+      "spec_speedup": 1.0287343199474885,
+      "spec_parity_ok": true,
+      "baseline_stats": {
+        "relaxations": 209961,
+        "light_relaxations": 0,
+        "heavy_relaxations": 0,
+        "settled": 250000,
+        "version": 4,
+        "variant": "baseline"
+      },
+      "spec_stats": {
+        "relaxations": 209961,
+        "light_relaxations": 0,
+        "heavy_relaxations": 0,
+        "settled": 250000,
+        "version": 4,
+        "variant": "spec_clean"
+      },
+      "baseline_heap": {
+        "pushes": 209962,
+        "pops": 209962,
+        "max_size": 41383
+      },
+      "spec_heap": {
+        "pushes": 209962,
+        "pops": 209962,
+        "max_size": 41383
+      },
+      "spec_only": true
+    },
+    {
+      "n": 500000,
+      "density": 2.0,
+      "m": 999998,
+      "baseline_ms": 746.5818269993179,
+      "spec_ms": 702.1604480032693,
+      "spec_speedup": 1.0632638581714045,
+      "spec_parity_ok": true,
+      "baseline_stats": {
+        "relaxations": 420308,
+        "light_relaxations": 0,
+        "heavy_relaxations": 0,
+        "settled": 500000,
+        "version": 4,
+        "variant": "baseline"
+      },
+      "spec_stats": {
+        "relaxations": 420308,
+        "light_relaxations": 0,
+        "heavy_relaxations": 0,
+        "settled": 500000,
+        "version": 4,
+        "variant": "spec_clean"
+      },
+      "baseline_heap": {
+        "pushes": 420309,
+        "pops": 420309,
+        "max_size": 82674
+      },
+      "spec_heap": {
+        "pushes": 420309,
+        "pops": 420309,
+        "max_size": 82674
+      },
+      "spec_only": true
+    },
+    {
+      "n": 1000000,
+      "density": 2.0,
+      "m": 1999999,
+      "baseline_ms": 1549.547035996511,
+      "spec_ms": 1501.6925320014707,
+      "spec_speedup": 1.0318670453340135,
+      "spec_parity_ok": true,
+      "baseline_stats": {
+        "relaxations": 839760,
+        "light_relaxations": 0,
+        "heavy_relaxations": 0,
+        "settled": 1000000,
+        "version": 4,
+        "variant": "baseline"
+      },
+      "spec_stats": {
+        "relaxations": 839760,
+        "light_relaxations": 0,
+        "heavy_relaxations": 0,
+        "settled": 1000000,
+        "version": 4,
+        "variant": "spec_clean"
+      },
+      "baseline_heap": {
+        "pushes": 839761,
+        "pops": 839761,
+        "max_size": 164079
+      },
+      "spec_heap": {
+        "pushes": 839761,
+        "pops": 839761,
+        "max_size": 164079
+      },
+      "spec_only": true
+    }
+  ],
+  "fits": {
+    "c1_m_plus_nlogn": 9.790267527593295e-05,
+    "c2_m_log23_n": 0.00013404616389628592,
+    "model_points": {
+      "overlay1_ms": [
+        29.680349068081096,
+        62.75413791370273,
+        132.294959577136,
+        353.16432534077086,
+        740.2597197659877,
+        1548.3806965767901
+      ],
+      "overlay2_ms": [
+        31.36892547514132,
+        65.57162181950801,
+        136.6901346556886,
+        359.6251710452199,
+        745.7528033477869,
+        1543.5787620487984
+      ]
+    }
+  }
+}
