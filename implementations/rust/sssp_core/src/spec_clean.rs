@@ -4,6 +4,12 @@
 
 use core::slice;
 use std::cmp::Ordering;
+#[repr(C)]
+#[derive(Copy,Clone)]
+pub struct SpecHeapStats { pub pushes:u64, pub pops:u64, pub max_size:u64 }
+static mut LAST_SPEC_HEAP_STATS: SpecHeapStats = SpecHeapStats { pushes:0, pops:0, max_size:0 };
+#[no_mangle]
+pub extern "C" fn sssp_get_spec_heap_stats(out:*mut SpecHeapStats){ if out.is_null(){ return; } unsafe{ *out = LAST_SPEC_HEAP_STATS; } }
 
 #[inline(always)] fn as_slice<'a, T>(ptr:*const T, len:usize)->&'a [T]{ unsafe{ slice::from_raw_parts(ptr,len) } }
 #[inline(always)] fn as_mut_slice<'a, T>(ptr:*mut T, len:usize)->&'a mut [T]{ unsafe{ slice::from_raw_parts_mut(ptr,len) } }
@@ -17,11 +23,11 @@ impl Ord for H { fn cmp(&self,o:&Self)->Ordering { // reverse for min-heap seman
 impl PartialOrd for H { fn partial_cmp(&self,o:&Self)->Option<Ordering>{ Some(self.cmp(o)) } }
 
 // Lightweight custom min-heap (binary heap) with explicit sift ops (mirrors baseline style)
-struct MinHeap{data:Vec<H>}
+struct MinHeap{data:Vec<H>, pushes:u64, pops:u64, max_size:u64}
 impl MinHeap{
-    #[inline] fn with_cap(c:usize)->Self{ Self{ data:Vec::with_capacity(c) } }
-    #[inline] fn push(&mut self, h:H){ self.data.push(h); self.sift_up(self.data.len()-1); }
-    #[inline] fn pop(&mut self)->Option<H>{ let n=self.data.len(); if n==0 {return None;} self.data.swap(0,n-1); let out=self.data.pop(); if !self.data.is_empty(){ self.sift_down(0);} out }
+    #[inline] fn with_cap(c:usize)->Self{ Self{ data:Vec::with_capacity(c), pushes:0, pops:0, max_size:0 } }
+    #[inline] fn push(&mut self, h:H){ self.data.push(h); self.pushes+=1; if self.data.len() as u64> self.max_size { self.max_size = self.data.len() as u64; } self.sift_up(self.data.len()-1); }
+    #[inline] fn pop(&mut self)->Option<H>{ let n=self.data.len(); if n==0 {return None;} self.data.swap(0,n-1); let out=self.data.pop(); self.pops+=1; if !self.data.is_empty(){ self.sift_down(0);} out }
     #[inline] fn sift_up(&mut self, mut i:usize){ while i>0 { let p=(i-1)/2; if self.data[i].d < self.data[p].d { self.data.swap(i,p); i=p;} else { break; } } }
     #[inline] fn sift_down(&mut self, mut i:usize){ let n=self.data.len(); loop { let l=i*2+1; if l>=n { break; } let r=l+1; let mut b=l; if r<n && self.data[r].d < self.data[l].d { b=r; } if self.data[b].d < self.data[i].d { self.data.swap(i,b); i=b; } else { break; } } }
 }
@@ -39,6 +45,7 @@ fn dijkstra(off:&[u32], tgt:&[u32], wts:&[f32], dist:&mut [f32], mut pred:Option
         let u = v as usize; let s = off[u] as usize; let e = off[u+1] as usize; let base = d;
         for idx in s..e { let wv = tgt[idx] as usize; let nd = base + wts[idx]; let cur = unsafe{ *dist.get_unchecked(wv) }; if nd < cur { unsafe{ *dist.get_unchecked_mut(wv)=nd; } if let Some(p)=pred.as_mut(){ unsafe{ *p.get_unchecked_mut(wv)=u as i32; } } *relaxations+=1; pq.push(H{d:nd,v:wv as u32}); } }
     }
+    unsafe { LAST_SPEC_HEAP_STATS = SpecHeapStats { pushes: pq.pushes, pops: pq.pops, max_size: pq.max_size }; }
 }
 
 // Placeholder BMSSP shell: currently just invokes Dijkstra once.
