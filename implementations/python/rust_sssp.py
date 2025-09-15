@@ -42,6 +42,10 @@ _HAS_STOC_AUTO_ADAPT = hasattr(_lib, 'sssp_run_stoc_auto_adapt')
 if _HAS_STOC_AUTO_ADAPT:
     _lib.sssp_run_stoc_auto_adapt.restype = ctypes.c_int32
     _lib.sssp_run_stoc_auto_adapt.argtypes = _lib.sssp_run_baseline.argtypes
+_HAS_SPEC_CLEAN = hasattr(_lib, 'sssp_run_spec_clean')
+if _HAS_SPEC_CLEAN:
+    _lib.sssp_run_spec_clean.restype = ctypes.c_int32
+    _lib.sssp_run_spec_clean.argtypes = _lib.sssp_run_baseline.argtypes
 _lib.sssp_version.restype = ctypes.c_uint32
 
 # Optional bucket stats FFI
@@ -101,6 +105,11 @@ def run_stoc_auto_adapt(offsets, targets, weights, source: int):
         raise RuntimeError("Unified autotune+adaptive function not available")
     return _run(offsets, targets, weights, source, 'stoc_auto_adapt')
 
+def run_spec_clean(offsets, targets, weights, source: int):
+    if not _HAS_SPEC_CLEAN:
+        raise RuntimeError('spec_clean function not available in loaded library')
+    return _run(offsets, targets, weights, source, 'spec_clean')
+
 def _run(offsets, targets, weights, source: int, mode):
     n = len(offsets) - 1
     m = len(targets)
@@ -117,6 +126,8 @@ def _run(offsets, targets, weights, source: int, mode):
         fn = _lib.sssp_run_stoc_autotune; variant = 'stoc_autotune'
     elif mode == 'stoc_auto_adapt':
         fn = _lib.sssp_run_stoc_auto_adapt; variant = 'stoc_auto_adapt'
+    elif mode == 'spec_clean':
+        fn = _lib.sssp_run_spec_clean; variant = 'spec_clean'
     else:
         fn = _lib.sssp_run_baseline; variant = 'baseline'
     rc = fn(n, OffArr, TgtArr, WArr, source, DistArr, PredArr, ctypes.byref(info))

@@ -3,7 +3,7 @@ import time
 import math
 import argparse
 import json
-from rust_sssp import run_baseline, run_stoc
+from rust_sssp import run_baseline, _HAS_SPEC_CLEAN, run_spec_clean
 
 # Simple random graph generator (uniform) producing CSR arrays
 # Nodes are 0..n-1; expected edges ~ density * n
@@ -36,36 +36,39 @@ def generate_graph(n: int, density: float, weight_low=1.0, weight_high=10.0, see
     return offsets, targets, weights
 
 
-def run_trial(n, density, seed):
+def run_trial(n, density, seed, verify_spec=True):
     offsets, targets, weights = generate_graph(n, density, seed=seed)
     src = 0
     t0 = time.perf_counter()
     dist_b, pred_b, stats_b = run_baseline(offsets, targets, weights, src)
     t1 = time.perf_counter()
-    # STOC
-    try:
-        dist_s, pred_s, stats_s = run_stoc(offsets, targets, weights, src)
-        t2 = time.perf_counter()
-        stoc_ms = (t2 - t1) * 1000.0
-        stoc_speedup = (t1 - t0) / (t2 - t1) if (t2 - t1) > 0 else None
-    except Exception:
-        stoc_ms = None
-        stoc_speedup = None
-        stats_s = None
-
+    spec_ms = None
+    spec_speedup = None
+    spec_stats = None
+    spec_parity_ok = None
+    if _HAS_SPEC_CLEAN:
+        t_spec0 = time.perf_counter()
+        dist_spec, pred_spec, spec_stats = run_spec_clean(offsets, targets, weights, src)
+        t_spec1 = time.perf_counter()
+        spec_ms = (t_spec1 - t_spec0) * 1000.0
+        spec_speedup = (t1 - t0) / (t_spec1 - t_spec0) if (t_spec1 - t_spec0) > 0 else None
+        if verify_spec:
+            # Parity: distances identical (allow tiny float epsilon)
+            mismatches = [i for i,(db,ds) in enumerate(zip(dist_b, dist_spec)) if abs(db-ds) > 1e-6 or (math.isinf(db) != math.isinf(ds))]
+            spec_parity_ok = (len(mismatches) == 0)
+            if not spec_parity_ok:
+                print(f"[WARN] spec_clean parity mismatches n={n} count={len(mismatches)} sample={mismatches[:10]}")
     return {
         'n': n,
         'density': density,
         'm': offsets[-1],
         'baseline_ms': (t1 - t0) * 1000.0,
-        'stoc_ms': stoc_ms,
-    'stoc_speedup': stoc_speedup,
-    'stoc_ms': stoc_ms,
-    'stoc_speedup': stoc_speedup,
+        'spec_ms': spec_ms,
+        'spec_speedup': spec_speedup,
+        'spec_parity_ok': spec_parity_ok,
         'baseline_stats': stats_b,
-    'optimized_stats': None,
-    'hybrid_stats': None,
-    'stoc_stats': stats_s
+        'spec_stats': spec_stats,
+    'spec_only': True
     }
 
 
@@ -83,14 +86,18 @@ def main():
     results = []
     for n in sizes:
         r = run_trial(n, args.density, args.seed)
-        msg = f"n={n} baseline={r['baseline_ms']:.2f}ms"
-        if r['stoc_ms'] is not None:
-            msg += f" stoc={r['stoc_ms']:.2f}ms stoc_spd={(r['stoc_speedup'] or 0):.2f}x"
+        msg = f"n={n} base={r['baseline_ms']:.2f}ms"
+        if r.get('spec_ms') is not None:
+            msg += f" spec={r['spec_ms']:.2f}ms"
+            if r.get('spec_speedup') is not None:
+                msg += f" spec_spd={(r['spec_speedup'] or 0):.2f}x"
+            if r.get('spec_parity_ok') is not None:
+                msg += " parity=OK" if r['spec_parity_ok'] else " parity=FAIL"
         print(msg)
         results.append(r)
 
-    with open(args.output, 'w') as f:
-        json.dump(results, f, indent=2)
+    # We'll append fit constants later after computing overlays; store intermediate
+    raw_results = results
 
     try:
         import matplotlib.pyplot as plt  # type: ignore
@@ -99,29 +106,74 @@ def main():
 
     xs = [r['n'] for r in results]
     b = [r['baseline_ms'] for r in results]
-    plt.figure(figsize=(8,5))
-    plt.plot(xs, b, marker='o', label='Baseline (binary heap)')
-    if any(r['stoc_ms'] for r in results):
-        sxs = [r['n'] for r in results if r['stoc_ms'] is not None]
-        sm = [r['stoc_ms'] for r in results if r['stoc_ms'] is not None]
-        plt.plot(sxs, sm, marker='D', label='STOC (delta-step)')
-    plt.xlabel('Nodes (n)')
-    plt.ylabel('Time (ms)')
-    plt.title('Rust SSSP Variants Performance')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    ax2 = plt.twinx()
-    if any(r['stoc_speedup'] for r in results):
-        sx2 = [r['n'] for r in results if r['stoc_speedup'] is not None]
-        sp_s = [r['stoc_speedup'] for r in results if r['stoc_speedup'] is not None]
-        ax2.plot(sx2, sp_s, color='orange', marker='D', linestyle='--', label='STOC speedup')
-    ax2.set_ylabel('Speedup (baseline / variant)')
-    lines, labels = plt.gca().get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
-    plt.legend(lines + lines2, labels + labels2, loc='best')
+    m_vals = [r['m'] for r in results]
+    fig = plt.figure(figsize=(8,5))
+    ax_time = fig.add_subplot(111)
+    ax_time.plot(xs, b, marker='o', label='Baseline empirical')
+    if any(r.get('spec_ms') for r in results):
+        sm_spec = [r['spec_ms'] for r in results if r.get('spec_ms') is not None]
+        sx_spec = [r['n'] for r in results if r.get('spec_ms') is not None]
+    ax_time.plot(sx_spec, sm_spec, marker='s', label='Spec Clean (parity)')
+    # (STOC removed)
+    ax_time.set_xlabel('Nodes (n)')
+    ax_time.set_ylabel('Time (ms)')
+    ax_time.set_title('Rust SSSP Variants Performance')
+    # Fit constants for overlays using least squares on provided sizes
+    import numpy as _np
+    logn = _np.array([math.log(n) for n in xs])
+    m_arr = _np.array(m_vals, dtype=float)
+    baseline_arr = _np.array(b)
+    # Model1: c1 * (m + n log n) ~ treat m ~ density*n so keep both terms
+    comp1 = m_arr + _np.array(xs) * logn
+    # Model2: c2 * m * (log n)**(2/3)
+    comp2 = m_arr * (logn ** (2/3))
+    # Solve c via least squares (c = (x.y)/(x.x))
+    def fit_const(comp, y):
+        denom = float((comp*comp).sum())
+        return float((comp*y).sum()/denom) if denom>0 else 0.0
+    c1 = fit_const(comp1, baseline_arr)
+    c2 = fit_const(comp2, baseline_arr)
+    # Scale: comp terms are counts; multiply by constant to approximate ms directly
+    overlay1 = c1 * comp1
+    overlay2 = c2 * comp2
+    ax_time.plot(xs, overlay1, linestyle='--', color='gray', label='O(m + n log n) fit')
+    ax_time.plot(xs, overlay2, linestyle='--', color='purple', label='O(m log^{2/3} n) fit')
+    ax_time.grid(True, alpha=0.3)
+    ax_speed = ax_time.twinx()
+    speedup_handles = []
+    speedup_labels = []
+    # (STOC speedup removed)
+    if any(r.get('spec_speedup') for r in results):
+        sx2b = [r['n'] for r in results if r.get('spec_speedup') is not None]
+        sp_spec = [r['spec_speedup'] for r in results if r.get('spec_speedup') is not None]
+        h_spec, = ax_speed.plot(sx2b, sp_spec, color='green', marker='s', linestyle='--', label='Spec speedup')
+        speedup_handles.append(h_spec); speedup_labels.append('Spec speedup')
+    ax_speed.set_ylabel('Speedup (baseline / variant)')
+    # Primary legend on time axis
+    ph, pl = ax_time.get_legend_handles_labels()
+    ax_time.legend(ph, pl, loc='upper left')
+    if speedup_handles:
+        ax_speed.legend(speedup_handles, speedup_labels, loc='lower right')
     plt.tight_layout()
     plt.savefig(args.plot, dpi=150)
     print(f"Saved plot to {args.plot}")
+    # Write JSON with fits
+    output_payload = {
+        'config': {
+            'sizes': sizes,
+            'density': args.density,
+            'seed': args.seed,
+        },
+        'results': raw_results,
+        'fits': {
+            'c1_m_plus_nlogn': c1,
+            'c2_m_log23_n': c2,
+            'model_points': { 'overlay1_ms': list(map(float, overlay1)), 'overlay2_ms': list(map(float, overlay2)) }
+        }
+    }
+    with open(args.output, 'w') as f:
+        json.dump(output_payload, f, indent=2)
+    print(f"Saved JSON with fit constants to {args.output}")
 
 if __name__ == '__main__':
     main()
