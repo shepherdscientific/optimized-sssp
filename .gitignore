@@ -9,6 +9,8 @@ implementations/rust/sssp_core/*.dSYM/
 benchmarks/results/
 benchmarks/results/*.png
 benchmarks/results/*.json
+benchmarks/*.json
+implementations/rust/sssp_core/benchmarks/*.json
 
 # Keep only documentation and small examples (remove the blanket exclude above)
 !benchmarks/results/*.md

@@ -13,8 +13,6 @@ This repository is a clean-room trajectory toward an eventually layered BMSSP-st
 ## 2. What Exists Right Now
 | Component | Status | Notes |
 |-----------|--------|-------|
-| Component | Status | Notes |
-|-----------|--------|-------|
 | Baseline binary-heap Dijkstra | ✅ Stable | Reference correctness oracle |
 | Spec Phase 1 (Truncated BaseCase) | ✅ | Inclusive bound semantics (retain dist == B) |
 | Spec Phase 2 (Pivot loop & subtree sizing) | ✅ | Subtree sizing + inclusive collected set |
@@ -75,71 +73,61 @@ Invariant coverage currently partial: size boundary and root filtering verified 
 
 ## 5. Benchmarks
 
-Two benchmark layers will be maintained going forward:
-1. Native Rust harness (fast, invoked via `cargo run --example bench_spec` or Make targets) producing:
-  * `benchmarks/native_sample.json` / `.png`
-  * `benchmarks/native_full.json` / `.png`
-2. Statistical grid (speedup heatmaps) driven by a Python plotting script consuming Rust-emitted JSON grids.
+The benchmark pipeline has been consolidated around a native Rust harness plus a lightweight Python plotting script. To avoid repository bloat and drift, raw JSON outputs are `.gitignore`'d; only regenerated PNG artifacts are meant to appear in the README. Tables with hard‑coded timings have been removed—always re‑generate locally for up‑to‑date numbers.
 
-Planned default artifacts (kept small so README plots stay fresh):
-* `benchmarks/native_sample_heatmap_speedup.png`
-* `benchmarks/native_sample_heatmap_baseline.png`
+Current default workflow (multi‑degree grid, then charts & heatmaps):
 
-Until recursion provides asymptotic structural wins, speedups will remain near 1.0x—these baselines act as regression sentinels.
+```
+cargo run --example bench_spec -- \
+  --sizes 25000,50000,100000 \
+  --degrees 2,4,8 \
+  --seed 42 \
+  --out implementations/rust/sssp_core/benchmarks/native_grid.json \
+  --full-parity --no-boundary-parity
 
-### 5.1 Sample (Parity Range)
-![Sample Baseline vs Spec](benchmarks/rust_spec_baseline_sample.png)
+python implementations/rust/sssp_core/benchmarks/generate_charts.py \
+  --input implementations/rust/sssp_core/benchmarks/native_grid.json \
+  --out-prefix implementations/rust/sssp_core/benchmarks/native_grid \
+  --phase phase3
+```
 
-| n | m | Baseline ms | Spec ms | Speedup |
-|---|---|-------------|---------|---------|
-| 25,000 | 49,996 | 22.39 | 22.06 | 1.015x |
-| 50,000 | 99,996 | 47.63 | 47.09 | 1.012x |
-| 100,000 | 199,998 | 116.81 | 111.53 | 1.047x |
-| 250,000 | 499,996 | 343.90 | 334.29 | 1.029x |
-| 500,000 | 999,998 | 746.58 | 702.16 | 1.063x |
-| 1,000,000 | 1,999,999 | 1,549.55 | 1,501.69 | 1.032x |
+Resulting artifacts (referenced below):
+* `implementations/rust/sssp_core/benchmarks/native_grid_speedup_multi_degree.png`
+* `implementations/rust/sssp_core/benchmarks/native_grid_heatmap_speedup.png`
+* `implementations/rust/sssp_core/benchmarks/native_grid_heatmap_baseline.png`
+* (Optional) `implementations/rust/sssp_core/benchmarks/native_grid_boundary_chain_times.png` if boundary chain parity not disabled.
 
-### 5.2 Extended (Larger Sizes)
-![Large Benchmark](benchmarks/rust_spec_baseline_big.png)
+### 5.1 Multi‑Degree Speedup (Phase 3 vs Baseline)
+![Phase 3 Multi-degree Speedup](implementations/rust/sssp_core/benchmarks/native_grid_speedup_multi_degree.png)
 
-| n | m | Baseline ms | Spec ms | Speedup |
-|---|---|-------------|---------|---------|
-| 25,000 | 49,996 | 21.48 | 21.74 | 0.99x |
-| 50,000 | 99,996 | 47.29 | 46.66 | 1.01x |
-| 100,000 | 199,998 | 124.87 | 112.23 | 1.11x |
-| 250,000 | 499,996 | 343.51 | 327.77 | 1.05x |
-| 500,000 | 999,998 | 720.15 | 706.19 | 1.02x |
-| 1,000,000 | 1,999,999 | 1541.73 | 1503.30 | 1.03x |
-| 2,500,000 | 4,999,999 | 3424.53 | 3331.04 | 1.03x |
-| 5,000,000 | 9,999,999 | 7032.10 | 6909.83 | 1.02x |
-| 10,000,000 | 19,999,998 | 21555.25 | 18749.72 | 1.15x |
+### 5.2 Speedup Heatmap (Phase 3)
+![Phase 3 Speedup Heatmap](implementations/rust/sssp_core/benchmarks/native_grid_heatmap_speedup.png)
 
-Observed speedup pattern: modest (1.0–1.06x typical) with occasional higher outlier at largest n (cache residency & branch profile effects). No asymptotic change expected yet.
+### 5.3 Baseline Time Heatmap (log10 ms)
+![Baseline Time Heatmap](implementations/rust/sssp_core/benchmarks/native_grid_heatmap_baseline.png)
 
-### 5.3 Statistical Grid & Heatmap
-Scripts produce heatmaps summarizing median speedup across (n,density). Example placeholders (regenerate via statistical script):
-
-Random small sampling heatmap:
-![Speedup Heatmap (Sample)](benchmarks/stat_full_heatmap.png)
-
-Larger run heatmap:
-![Speedup Heatmap (Large)](benchmarks/stat_full_heatmap_big.png)
+Note: Large apparent speedups before recursion lands can indicate truncation was not fully disabled (e.g. missing `--full-parity` or boundary chain parity skipped). Always validate parity when interpreting charts; genuine asymptotic improvements are expected only after multi-level recursion is implemented.
 
 ## 6. Reproduce Benchmarks
 ```bash
 # Native harness (sample sizes, single degree)
 cargo run --example bench_spec -- --sizes 25000,50000,100000,250000 --degrees 4 --seed 42 --out benchmarks/native_sample.json --full-parity --no-boundary-parity
 
-# Multi-degree grid (for heatmaps)
-cargo run --example bench_spec -- --sizes 25000,50000,100000 --degrees 2,4,8 --seed 42 --out benchmarks/native_grid.json --full-parity --no-boundary-parity
+# Multi-degree grid (for heatmaps & multi-line speedup)
+cargo run --example bench_spec -- --sizes 25000,50000,100000 --degrees 2,4,8 --seed 42 \
+  --out implementations/rust/sssp_core/benchmarks/native_grid.json \
+  --full-parity --no-boundary-parity
 
-# Generate charts & heatmaps (replaces existing images)
-python benchmarks/generate_charts.py --input benchmarks/native_grid.json --out-prefix benchmarks/native_grid --phase phase3
+# Generate charts & heatmaps (writes PNGs alongside JSON)
+python implementations/rust/sssp_core/benchmarks/generate_charts.py \
+  --input implementations/rust/sssp_core/benchmarks/native_grid.json \
+  --out-prefix implementations/rust/sssp_core/benchmarks/native_grid \
+  --phase phase3
 
 # Outputs created (examples):
-# benchmarks/native_grid_benchmark.png (if single degree) or _speedup_multi_degree.png
-# benchmarks/native_grid_heatmap_speedup.png
-# benchmarks/native_grid_heatmap_baseline.png
+# native_grid_speedup_multi_degree.png (or native_grid_benchmark.png if single degree)
+# native_grid_heatmap_speedup.png
+# native_grid_heatmap_baseline.png
 # Optional boundary chain comparative chart if not using --no-bc
 
 # Legacy Python benchmark (still supported)
