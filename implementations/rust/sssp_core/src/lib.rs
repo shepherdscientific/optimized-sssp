@@ -553,5 +553,8 @@ pub use spec_future::{
     sssp_run_spec_recursive,
     sssp_run_spec_recursive_ml,
     sssp_get_spec_recursion_stats,
+    sssp_get_spec_recursion_frame_count,
+    sssp_get_spec_recursion_frame,
     SpecRecursionStats,
+    SpecRecursionFrameDetail,
 };

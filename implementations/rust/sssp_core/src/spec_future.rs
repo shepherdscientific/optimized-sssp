@@ -322,7 +322,7 @@ pub extern "C" fn sssp_run_spec_recursive_ml(
             }}
         }
     }
-    let frames_total = unsafe { RECURSION_FRAMES.len() as u32 };
+    let frames_total = unsafe { let ptr = &RECURSION_FRAMES as *const Vec<SpecRecursionFrameDetail>; (*ptr).len() as u32 };
     // Correctness via baseline (full) run
     let rc = unsafe { crate::sssp_run_baseline(n, offsets, targets, weights, source, out_dist, out_pred, info) }; if rc!=0 { return rc; }
     let baseline_relax = if info.is_null() {0} else { unsafe { (*info).relaxations } };
