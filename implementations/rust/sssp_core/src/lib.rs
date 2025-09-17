@@ -535,3 +535,4 @@ pub extern "C" fn sssp_run_stoc_auto_adapt(
 }
 
 mod spec_clean; // brings in sssp_run_spec_clean symbol (#[no_mangle])
+mod spec_future; // scaffolding for upcoming phases (no exported symbols yet)
