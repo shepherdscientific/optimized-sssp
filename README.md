@@ -173,6 +173,23 @@ Heap identity confirms no structural optimization applied yet—future phases sh
 ## 9. How Close Are We?
 We have functional Phases 1–3 plus boundary chain segmentation and a recursion scaffold that still delegates to baseline (no hierarchical pruning). Structural divergence (reduced relaxations / heap ops) will only materialize once recursion enforces frontier caps and selective descent. Current benchmarks therefore establish the zero-improvement control line—critical for validating that future gains are genuine and not artifact regressions.
 
+### 9.1 Initial Recursion Harness (Prototype)
+`sssp_run_spec_recursive` now records multi-frame stats by combining a correctness baseline run with an auxiliary boundary-chain segmentation pass (disabled via `SSSP_SPEC_RECURSION_NO_CHAIN=1`). This does NOT yet perform true hierarchical expansion—distances are from baseline; chain is used only to approximate future recursion frame decomposition.
+
+Exported stats via `sssp_get_spec_recursion_stats`:
+* `frames`: number of boundary chain segments (>=1)
+* `total_relaxations`: baseline relax count (control)
+* `seed_k`: environment-derived seed (`SSSP_SPEC_RECURSION_K`, default 1024)
+* `chain_segments`: same as frames when chain enabled
+* `chain_total_collected`: nodes covered by chain segments (may truncate)
+
+Environment knobs relevant now:
+* `SSSP_SPEC_RECURSION_K` – future splitting granularity (currently recorded only)
+* `SSSP_SPEC_RECURSION_NO_CHAIN=1` – skip boundary segmentation (stats will show frames=1)
+* Chain sizing reuses `SSSP_SPEC_CHAIN_K`, `SSSP_SPEC_CHAIN_MAX_SEG`, `SSSP_SPEC_CHAIN_TARGET` like standalone boundary runner.
+
+Next step: replace post-baseline segmentation with true recursive descent invoking truncated basecase + pivot selection per boundary layer and merging results.
+
 ## 10. Legacy / Deprecated (STOC Path)
 Delta-stepping code remains only for historical comparison and will not evolve further in this branch. It may be entirely removed once BMSSP phases demonstrate stable improvement. Treat any STOC references as archival.
 
