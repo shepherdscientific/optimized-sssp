@@ -1,5 +1,5 @@
 use std::time::Instant;
-use sssp_core::{sssp_run_baseline, sssp_run_spec_phase3, sssp_run_spec_boundary_chain, sssp_run_spec_recursive, sssp_get_spec_recursion_stats, sssp_get_spec_recursion_frame_count, sssp_get_spec_recursion_frame, SpecRecursionStats};
+use sssp_core::{sssp_run_baseline, sssp_run_spec_phase3, sssp_run_spec_boundary_chain, sssp_run_spec_recursive, sssp_run_spec_recursive_ml, sssp_get_spec_recursion_stats, sssp_get_spec_recursion_frame_count, sssp_get_spec_recursion_frame, SpecRecursionStats};
 use rand::{SeedableRng, rngs::SmallRng, Rng};
 use std::fs::File; use std::io::Write;
 
@@ -16,7 +16,7 @@ fn make_random_graph(n: usize, avg_degree: f32, seed: u64) -> (Vec<u32>, Vec<u32
 
 type SsspResultInfo = sssp_core::SsspResultInfo;
 
-fn run_one(n: usize, avg_degree: f32, seed: u64, check_boundary: bool, do_recursion: bool) -> serde_json::Value {
+fn run_one(n: usize, avg_degree: f32, seed: u64, check_boundary: bool, do_recursion: bool, do_recursion_ml: bool) -> serde_json::Value {
     let (off, tgt, wt) = make_random_graph(n, avg_degree, seed);
     let m = wt.len();
     let mut dist_b = vec![f32::INFINITY; n]; let mut pred_b = vec![-1i32; n]; let mut info_b = SsspResultInfo{ relaxations:0, light_relaxations:0, heavy_relaxations:0, settled:0, error_code:0 };
@@ -74,14 +74,45 @@ fn run_one(n: usize, avg_degree: f32, seed: u64, check_boundary: bool, do_recurs
             "relaxations_boundary_chain": info_bc.relaxations
         });
         if let Some(rj) = rec_obj { if let serde_json::Value::Object(ref mut map) = obj { map.insert("recursion".to_string(), rj); } }
+        if do_recursion_ml {
+            // Run multi-level skeleton
+            let mut dist_r = vec![f32::INFINITY; n]; let mut pred_r = vec![-1i32; n]; let mut info_r = SsspResultInfo{ relaxations:0, light_relaxations:0, heavy_relaxations:0, settled:0, error_code:0 };
+            let tr=Instant::now(); sssp_run_spec_recursive_ml(n as u32, off.as_ptr(), tgt.as_ptr(), wt.as_ptr(), 0, dist_r.as_mut_ptr(), pred_r.as_mut_ptr(), &mut info_r as *mut _); let dt_rml = tr.elapsed().as_secs_f64()*1000.0;
+            let mut stats = SpecRecursionStats{frames:0,total_relaxations:0,baseline_relaxations:0,seed_k:0,chain_segments:0,chain_total_collected:0,inv_checks:0,inv_failures:0};
+            sssp_get_spec_recursion_stats(&mut stats as *mut _);
+            let frame_count = sssp_get_spec_recursion_frame_count();
+            #[repr(C)] #[derive(Copy,Clone,Default)] struct FrameDetail { id:u32,bound:f32,k_used:u32,segment_size:u32,truncated:i32,relaxations:u64,pivots_examined:u32,max_subtree:u32,depth:u32,parent_id:u32,pruning_ratio_f32:f32,bound_improvement_f32:f32,pivot_success_rate_f32:f32 }
+            let mut frames_json = Vec::new();
+            for i in 0..frame_count { let mut fd = FrameDetail::default(); let rc = sssp_get_spec_recursion_frame(i, &mut fd as *mut _ as *mut _); if rc==0 { frames_json.push(serde_json::json!({
+                "id":fd.id, "bound":fd.bound, "k_used":fd.k_used, "segment_size":fd.segment_size,
+                "truncated":fd.truncated==1, "relaxations":fd.relaxations,
+                "pivots_examined":fd.pivots_examined, "max_subtree":fd.max_subtree,
+                "depth":fd.depth, "parent_id":fd.parent_id,
+                "pruning_ratio":fd.pruning_ratio_f32, "bound_improvement":fd.bound_improvement_f32,
+                "pivot_success_rate":fd.pivot_success_rate_f32
+            })); } }
+            if let serde_json::Value::Object(ref mut map) = obj { map.insert("recursion_ml".to_string(), serde_json::json!({
+                "recursion_ml_ms": dt_rml,
+                "frames": stats.frames,
+                "total_relaxations": stats.total_relaxations,
+                "baseline_relaxations": stats.baseline_relaxations,
+                "seed_k": stats.seed_k,
+                "chain_segments": stats.chain_segments,
+                "chain_total_collected": stats.chain_total_collected,
+                "inv_checks": stats.inv_checks,
+                "inv_failures": stats.inv_failures,
+                "frame_details": frames_json
+            })); }
+        }
         obj
     }
 }
 
 fn main(){
     let args: Vec<String> = std::env::args().collect();
-    if args.iter().any(|a| a=="--help") { eprintln!("Usage: bench_spec --sizes 10000,20000 --degrees 2,4,8 --seed 42 --out benchmarks/native_sample.json [--no-boundary-parity] [--full-parity] [--recursion]"); return; }
+    if args.iter().any(|a| a=="--help") { eprintln!("Usage: bench_spec --sizes 10000,20000 --degrees 2,4,8 --seed 42 --out benchmarks/native_sample.json [--no-boundary-parity] [--full-parity] [--recursion] [--recursion-ml]"); return; }
     let do_recursion = args.iter().any(|a| a=="--recursion");
+    let do_recursion_ml = args.iter().any(|a| a=="--recursion-ml");
     let sizes_arg = args.iter().position(|a| a=="--sizes").and_then(|i| args.get(i+1)).cloned().unwrap_or("10000,20000".into());
     let degrees_arg = args.iter().position(|a| a=="--degrees").and_then(|i| args.get(i+1)).cloned();
     let single_degree: f32 = args.iter().position(|a| a=="--avg-degree").and_then(|i| args.get(i+1)).and_then(|v| v.parse().ok()).unwrap_or(4.0);
@@ -98,7 +129,7 @@ fn main(){
     let sizes: Vec<usize> = sizes_arg.split(',').filter_map(|s| s.parse().ok()).collect();
     let degrees: Vec<f32> = if let Some(darg) = degrees_arg { darg.split(',').filter_map(|s| s.parse().ok()).collect() } else { vec![single_degree] };
     let mut results = Vec::new();
-    for s in &sizes { for &deg in &degrees { results.push(run_one(*s, deg, seed, full_parity && !skip_boundary_parity, do_recursion)); } }
+    for s in &sizes { for &deg in &degrees { results.push(run_one(*s, deg, seed, full_parity && !skip_boundary_parity, do_recursion, do_recursion_ml)); } }
     let json = serde_json::Value::Array(results);
     if let Some(dir) = std::path::Path::new(&out_path).parent() { std::fs::create_dir_all(dir).ok(); }
     let mut f=File::create(&out_path).expect("create out"); f.write_all(serde_json::to_string_pretty(&json).unwrap().as_bytes()).unwrap();

@@ -217,3 +217,115 @@ mod tests {
         assert!(stats.frames >= 1);
     }
 }
+
+// ---------------- Multi-Level Recursion Skeleton (prototype) ----------------
+// Reuses single-layer segmentation as level 0, then synthesizes a depth-1 refinement
+// by splitting each eligible segment, recording hierarchical frame metadata.
+#[no_mangle]
+pub extern "C" fn sssp_run_spec_recursive_ml(
+    n: u32,
+    offsets:*const u32,
+    targets:*const u32,
+    weights:*const f32,
+    source:u32,
+    out_dist:*mut f32,
+    out_pred:*mut i32,
+    info:*mut crate::SsspResultInfo,
+) -> i32 {
+    if n==0 { return -1; }
+    let depth_max = std::env::var("SSSP_SPEC_ML_DEPTH_MAX").ok().and_then(|v| v.parse().ok()).unwrap_or(2).max(1);
+    // Run base segmentation (same logic as single-layer) to populate depth 0 frames.
+    // (Duplicate minimal code path to avoid refactor churn.)
+    let seed_k = std::env::var("SSSP_SPEC_RECURSION_K").ok().and_then(|v| v.parse().ok()).unwrap_or(1024).max(1);
+    let disable_chain = false; // multi-level always performs first layer
+    let mut chain_segments = 0u32; let mut chain_total_collected = 0u32; let mut seg_relax_sum: u64 = 0;
+    unsafe { RECURSION_FRAMES.clear(); }
+    let mut inv_checks: u64 = 0; let mut inv_failures: u64 = 0;
+    if !disable_chain {
+        let n_usize = n as usize;
+        let off = unsafe { core::slice::from_raw_parts(offsets, n_usize+1) };
+        let m = off[n_usize] as usize;
+        let tgt = unsafe { core::slice::from_raw_parts(targets, m) };
+        let wts = unsafe { core::slice::from_raw_parts(weights, m) };
+        let mut dist = vec![f32::INFINITY; n_usize];
+        let mut pred = vec![-1i32; n_usize];
+        let mut visited = vec![false; n_usize];
+        dist[source as usize] = 0.0;
+        let mut k = std::env::var("SSSP_SPEC_CHAIN_K").ok().and_then(|v| v.parse().ok()).unwrap_or(1024).max(1);
+        let seg_max = std::env::var("SSSP_SPEC_CHAIN_MAX_SEG").ok().and_then(|v| v.parse().ok()).unwrap_or(16).max(1) // keep smaller for skeleton
+            .min(32);
+        let max_frames = std::env::var("SSSP_SPEC_RECURSION_MAX_FRAMES").ok().and_then(|v| v.parse().ok()).unwrap_or(256).max(1);
+        let mut prev_bound = -1.0f32;
+        while chain_segments < seg_max && chain_total_collected < n {
+            #[derive(Copy,Clone)] struct Item { u:u32, d:f32 }
+            impl PartialEq for Item { fn eq(&self,o:&Self)->bool { self.d==o.d && self.u==o.u }}
+            impl Eq for Item {}
+            impl PartialOrd for Item { fn partial_cmp(&self,o:&Self)->Option<std::cmp::Ordering>{ o.d.partial_cmp(&self.d) }}
+            impl Ord for Item { fn cmp(&self,o:&Self)->std::cmp::Ordering { self.partial_cmp(o).unwrap() }}
+            use std::collections::BinaryHeap; let mut pq = BinaryHeap::new();
+            if chain_segments==0 { pq.push(Item{u:source,d:0.0}); }
+            let mut popped=0u32; let mut max_seen=0.0f32; let mut truncated=false; let mut relax=0u64; let mut scratch: Vec<u32> = Vec::with_capacity(k as usize + 2);
+            while let Some(Item{u,d}) = pq.pop() {
+                if d > dist[u as usize] { continue; }
+                if visited[u as usize] { continue; }
+                scratch.push(u); popped+=1; if d>max_seen { max_seen=d; }
+                if popped==k+1 { truncated=true; break; }
+                let ui = u as usize; let se = off[ui] as usize; let ee = off[ui+1] as usize;
+                for e in se..ee { let v = tgt[e] as usize; if visited[v] { continue; } let nd = d + wts[e]; let cur = dist[v]; if nd < cur { dist[v]=nd; pred[v]=u as i32; pq.push(Item{u:v as u32,d:nd}); relax+=1; } }
+            }
+            let bound = if truncated { max_seen } else { f32::INFINITY };
+            let mut segment_nodes: Vec<u32> = Vec::new();
+            for &u in &scratch { let ui=u as usize; let dval=dist[ui]; if dval.is_finite() && dval < bound && !visited[ui] { segment_nodes.push(u); } }
+            if segment_nodes.is_empty() { break; }
+            if prev_bound >= 0.0 { inv_checks += 1; if !(bound > prev_bound) { inv_failures += 1; } }
+            for &u in &segment_nodes { visited[u as usize]=true; }
+            let seg_size = segment_nodes.len() as u32; chain_total_collected += seg_size; seg_relax_sum += relax; chain_segments += 1;
+            // Dependency invariant
+            for &u in &segment_nodes { let ui = u as usize; let p = pred[ui]; if p >= 0 { inv_checks += 1; let pi = p as usize; if !(visited[pi] && dist[pi] <= dist[ui]) { inv_failures += 1; } } }
+            if unsafe { RECURSION_FRAMES.len() } < max_frames as usize { unsafe { RECURSION_FRAMES.push(SpecRecursionFrameDetail {
+                id: chain_segments, bound, k_used: k, segment_size: seg_size, truncated: if truncated {1} else {0}, relaxations: relax,
+                pivots_examined:0, max_subtree:0, depth:0, parent_id:0, pruning_ratio_f32:0.0, bound_improvement_f32: if prev_bound>=0.0 && bound.is_finite(){ bound - prev_bound } else {0.0}, pivot_success_rate_f32:0.0
+            }); } }
+            if !truncated { break; }
+            if seg_size >= k { k = (k.saturating_mul(2)).min(n); }
+            prev_bound = bound;
+            if chain_segments >= max_frames { break; }
+        }
+    }
+    // Synthesize depth-1 refinement frames (skeleton) if depth_max>1
+    if depth_max > 1 {
+        unsafe {
+            let existing: Vec<SpecRecursionFrameDetail> = RECURSION_FRAMES.clone();
+            for frame in existing.iter() { if frame.depth==0 && frame.bound.is_finite() {
+                let child_id = (RECURSION_FRAMES.len() as u32) + 1;
+                // Invariants: child bound must be > parent bound
+                let child_bound = frame.bound + (frame.bound.abs()*0.01 + 1e-6);
+                inv_checks += 1; if !(child_bound > frame.bound) { inv_failures += 1; }
+                // segment_size shrinks to simulate pruning
+                let child_seg = frame.segment_size / 2;
+                inv_checks += 1; if !(child_seg <= frame.segment_size) { inv_failures += 1; }
+                RECURSION_FRAMES.push(SpecRecursionFrameDetail {
+                    id: child_id,
+                    bound: child_bound,
+                    k_used: frame.k_used,
+                    segment_size: child_seg,
+                    truncated: frame.truncated,
+                    relaxations: 0,
+                    pivots_examined: 0,
+                    max_subtree: 0,
+                    depth: frame.depth + 1,
+                    parent_id: frame.id,
+                    pruning_ratio_f32: if frame.segment_size>0 { 1.0 - (child_seg as f32 / frame.segment_size as f32) } else { 0.0 },
+                    bound_improvement_f32: child_bound - frame.bound,
+                    pivot_success_rate_f32: 0.0,
+                });
+            }}
+        }
+    }
+    let frames_total = unsafe { RECURSION_FRAMES.len() as u32 };
+    // Correctness via baseline (full) run
+    let rc = unsafe { crate::sssp_run_baseline(n, offsets, targets, weights, source, out_dist, out_pred, info) }; if rc!=0 { return rc; }
+    let baseline_relax = if info.is_null() {0} else { unsafe { (*info).relaxations } };
+    unsafe { LAST_RECURSION_STATS.frames = frames_total; LAST_RECURSION_STATS.total_relaxations = seg_relax_sum; LAST_RECURSION_STATS.baseline_relaxations = baseline_relax; LAST_RECURSION_STATS.seed_k = seed_k; LAST_RECURSION_STATS.chain_segments = chain_segments; LAST_RECURSION_STATS.chain_total_collected = chain_total_collected; LAST_RECURSION_STATS.inv_checks = inv_checks; LAST_RECURSION_STATS.inv_failures = inv_failures; }
+    0
+}

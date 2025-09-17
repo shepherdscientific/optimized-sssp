@@ -551,6 +551,7 @@ pub use spec_clean::{
 };
 pub use spec_future::{
     sssp_run_spec_recursive,
+    sssp_run_spec_recursive_ml,
     sssp_get_spec_recursion_stats,
     SpecRecursionStats,
 };
