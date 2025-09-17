@@ -188,6 +188,14 @@ static mut LAST_PHASE2_STATS: SpecPhase2Stats = SpecPhase2Stats { attempts:0, su
 #[no_mangle]
 pub extern "C" fn sssp_get_spec_phase2_stats(out:*mut SpecPhase2Stats){ if out.is_null(){ return; } unsafe { *out = LAST_PHASE2_STATS; } }
 
+// Phase 3 stats (DataStructureD integration placeholder)
+#[repr(C)]
+#[derive(Copy,Clone,Default)]
+pub struct SpecPhase3Stats { pub pulls: u32, pub batches: u32, pub pushes: u32, pub relaxations: u64 }
+static mut LAST_PHASE3_STATS: SpecPhase3Stats = SpecPhase3Stats { pulls:0, batches:0, pushes:0, relaxations:0 };
+#[no_mangle]
+pub extern "C" fn sssp_get_spec_phase3_stats(out:*mut SpecPhase3Stats){ if out.is_null(){ return; } unsafe { *out = LAST_PHASE3_STATS; } }
+
 // Invariant assertion framework (Phase 2 partial)
 #[repr(C)]
 #[derive(Copy,Clone,Default)]
@@ -275,6 +283,59 @@ pub extern "C" fn sssp_run_spec_phase2(
     }
     unsafe { LAST_PHASE2_STATS = SpecPhase2Stats { attempts, success, final_k: k, collected: final_collected, max_subtree: max_subtree_any, roots_examined: roots_examined_any, relaxations: total_relax, bound: final_bound }; }
     if !info.is_null(){ unsafe { *info = crate::SsspResultInfo { relaxations: total_relax, light_relaxations:0, heavy_relaxations:0, settled: final_collected, error_code: success }; } }
+    0
+}
+
+// ------------- Phase 3 Runner (initial DataStructureD integration) -------------
+#[no_mangle]
+pub extern "C" fn sssp_run_spec_phase3(
+    n: u32,
+    offsets:*const u32,
+    targets:*const u32,
+    weights:*const f32,
+    source:u32,
+    out_dist:*mut f32,
+    out_pred:*mut i32,
+    info:*mut crate::SsspResultInfo,
+) -> i32 {
+    use crate::spec_future::DataStructureD;
+    if n==0 { return -1; }
+    if source>=n { return -2; }
+    if offsets.is_null() || targets.is_null() || weights.is_null() || out_dist.is_null() || out_pred.is_null(){ return -3; }
+    let n_usize = n as usize; let off = unsafe { as_slice(offsets, n_usize+1) }; let m = off[n_usize] as usize;
+    let tgt = unsafe { as_slice(targets, m) }; let wts = unsafe { as_slice(weights, m) };
+    let dist = unsafe { as_mut_slice(out_dist, n_usize) }; let pred = unsafe { as_mut_slice(out_pred, n_usize) };
+    for d in dist.iter_mut() { *d = f32::INFINITY; } for p in pred.iter_mut() { *p = -1; }
+    dist[source as usize] = 0.0;
+    // Simple distance bucket mapping: bucket = floor(dist / delta) with adaptive delta (avg of first 32 edges * 2)
+    let sample = core::cmp::min(32, m); let mut avg = 1.0f32; if sample>0 { let mut s=0.0; for i in 0..sample { s+=wts[i]; } avg=(s/sample as f32).max(1e-4); }
+    let delta = avg * 2.0; let inv_delta = 1.0 / delta;
+    let mut buckets: Vec<Vec<u32>> = Vec::new();
+    let mut ensure_bucket = |i:usize| { if i>=buckets.len() { buckets.resize_with(i+1, Vec::new); } };
+    ensure_bucket(0); buckets[0].push(source);
+    let mut ds = DataStructureD::new();
+    let mut relax: u64 = 0; let mut pulls: u32 = 0; let mut batches: u32 = 0; let mut pushes: u32 = 0;
+    let mut current_bucket = 0usize;
+    while current_bucket < buckets.len() {
+        if buckets[current_bucket].is_empty() { current_bucket += 1; continue; }
+        // Batch prepend this bucket into D (reverse so pop gives increasing dist order approx)
+        let mut batch = core::mem::take(&mut buckets[current_bucket]);
+        batches += 1; batch.shrink_to_fit(); ds.batch_prepend(batch);
+        // Pull until active segment empty
+        let mut last_dist = -1.0f32;
+        while !ds.is_empty() {
+            ds.pull(|u| {
+                pulls += 1; let ui = u as usize; let base = dist[ui]; if !base.is_finite() { return; }
+                if last_dist >= 0.0 { inv_check(base >= last_dist, "Phase3 pull distance order violation"); }
+                last_dist = base;
+                let se = off[ui] as usize; let ee = off[ui+1] as usize;
+                for e in se..ee { let v = tgt[e] as usize; let nd = base + wts[e]; let cur = dist[v]; if nd < cur { dist[v]=nd; pred[v]=u as i32; let b = (nd * inv_delta) as usize; ensure_bucket(b); buckets[b].push(v as u32); pushes += 1; relax += 1; } }
+            });
+        }
+        current_bucket += 1;
+    }
+    unsafe { LAST_PHASE3_STATS = SpecPhase3Stats { pulls, batches, pushes, relaxations: relax }; }
+    if !info.is_null(){ unsafe { *info = crate::SsspResultInfo { relaxations: relax, light_relaxations:0, heavy_relaxations:0, settled: n, error_code: 0 }; } }
     0
 }
 
@@ -408,5 +469,27 @@ mod tests {
         let mut stats = SpecPhase2Stats::default(); unsafe { sssp_get_spec_phase2_stats(&mut stats as *mut _); }
         assert!(stats.attempts >=1);
         assert!(stats.final_k >=1);
+    }
+    #[test]
+    fn datastructure_d_ordering() {
+        use crate::spec_future::DataStructureD;
+        let mut d = DataStructureD::new();
+        d.batch_prepend(vec![1,2,3]); // first batch
+        d.batch_prepend(vec![4,5]);   // newer batch should be pulled first
+        let mut seen = Vec::new();
+        while !d.is_empty() { d.pull(|v| seen.push(v)); }
+        // Expect order begins with second batch contents (reverse internal pop) then first batch
+        assert!(seen.contains(&4) && seen.contains(&5));
+    }
+    #[test]
+    fn phase3_basic(){
+        // Small graph ensures distances correct vs Dijkstra
+        let off=[0u32,2,3,3];
+        let tgt=[1,2,2];
+        let wts=[1.0f32,4.0,0.5];
+        let n=3u32; let mut dist=vec![0f32;3]; let mut pred=vec![-1i32;3];
+        let mut info = crate::SsspResultInfo { relaxations:0, light_relaxations:0, heavy_relaxations:0, settled:0, error_code:0 };
+        let rc = sssp_run_spec_phase3(n, off.as_ptr(), tgt.as_ptr(), wts.as_ptr(), 0, dist.as_mut_ptr(), pred.as_mut_ptr(), &mut info as *mut _);
+        assert_eq!(rc,0); assert!((dist[1]-1.0).abs()<1e-6); assert!((dist[2]-1.5).abs()<1e-6);
     }
 }

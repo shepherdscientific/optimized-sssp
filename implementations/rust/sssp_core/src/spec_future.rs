@@ -9,15 +9,23 @@ pub struct ForestNodeMeta { pub parent: u32, pub size: u32 }
 
 pub struct DataStructureD {
     // Placeholder internal buffers; final design will combine small buckets and batch-prepend queue.
-    light_frontier: Vec<u32>,
-    heavy_buffer: Vec<u32>,
+        active: Vec<u32>,          // current pull list
+        prepend_batches: Vec<Vec<u32>>, // queued batches to prepend (LIFO for O(1) prepend)
+        spill: Vec<u32>,           // fallback appended entries
 }
 impl DataStructureD {
-    pub fn new() -> Self { Self { light_frontier: Vec::new(), heavy_buffer: Vec::new() } }
-    pub fn push_light(&mut self, v: u32) { self.light_frontier.push(v); }
-    pub fn push_heavy(&mut self, v: u32) { self.heavy_buffer.push(v); }
-    pub fn drain_light<F:FnMut(u32)>(&mut self, mut f:F){ for v in self.light_frontier.drain(..) { f(v); } }
-    pub fn drain_heavy<F:FnMut(u32)>(&mut self, mut f:F){ for v in self.heavy_buffer.drain(..) { f(v); } }
+        pub fn new() -> Self { Self { active: Vec::new(), prepend_batches: Vec::new(), spill: Vec::new() } }
+        pub fn push(&mut self, v: u32) { self.spill.push(v); }
+        pub fn batch_prepend(&mut self, batch: Vec<u32>) { if !batch.is_empty() { self.prepend_batches.push(batch); } }
+        #[inline]
+        fn rotate_prepend(&mut self){ while let Some(mut b) = self.prepend_batches.pop() { if !b.is_empty() { // newest batch prepended first
+                // Move current active to spill, replace active with batch
+                if !self.active.is_empty() { self.spill.extend(self.active.drain(..)); }
+                self.active = b; return; } }
+            if self.active.is_empty() && !self.spill.is_empty() { std::mem::swap(&mut self.active, &mut self.spill); }
+        }
+        pub fn pull<F:FnMut(u32)>(&mut self, mut f:F){ if self.active.is_empty() { self.rotate_prepend(); } while let Some(v)=self.active.pop() { f(v); if self.active.is_empty() { self.rotate_prepend(); } } }
+        pub fn is_empty(&self) -> bool { self.active.is_empty() && self.prepend_batches.is_empty() && self.spill.is_empty() }
 }
 
 pub struct BoundaryChain { pub layers: Vec<f32> } // Represents B sequence for recursion levels
