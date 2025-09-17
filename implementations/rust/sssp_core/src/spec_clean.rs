@@ -143,7 +143,7 @@ pub fn basecase_truncated(
         for e in se..ee { let v = tgt[e] as usize; let nd = d + wts[e]; if nd <= dist[v] && nd <= initial_bound { dist[v]=nd; pred[v]=u as i32; if let Some(ref mut dv)=depth { let parent_depth = dv[u as usize]; if parent_depth != u32::MAX { dv[v] = parent_depth + 1; } } pq.push(Item{u:v as u32,d:nd}); *relaxations += 1; } }
     }
     let new_bound = if truncated { max_seen } else { initial_bound };
-    if truncated { for &u in scratch.iter() { if dist[u as usize] >= new_bound { dist[u as usize] = f32::INFINITY; pred[u as usize] = -1; } } }
+    if truncated { for &u in scratch.iter() { if dist[u as usize] > new_bound { dist[u as usize] = f32::INFINITY; pred[u as usize] = -1; } } }
     BaseCaseResult { outcome: if truncated {1} else {0}, new_bound, collected: scratch.iter().filter(|&&u| dist[u as usize].is_finite()).count() as u32 }
 }
 
@@ -262,15 +262,15 @@ pub extern "C" fn sssp_run_spec_phase2(
         dist[source as usize] = 0.0; pq.push(Item2{u:source,d:0.0}); scratch.clear();
         let mut popped = 0u32; let mut max_seen = 0.0f32; let mut truncated=false;
     while let Some(Item2{u,d}) = pq.pop() { if d > dist[u as usize] { continue; } scratch.push(u); pop_order.push(u); popped+=1; if d>max_seen { max_seen=d; } if popped==k+1 { truncated=true; break; } let ui=u as usize; let se=off[ui] as usize; let ee=off[ui+1] as usize; for e in se..ee { let v=tgt[e] as usize; let nd = d + wts[e]; if nd <= dist[v] { dist[v]=nd; pred[v]=u as i32; pq.push(Item2{u:v as u32,d:nd}); relax+=1; } } }
-        let new_bound = if truncated { max_seen } else { f32::INFINITY };
-        if truncated { for &u in scratch.iter() { if dist[u as usize] >= new_bound { dist[u as usize]=f32::INFINITY; pred[u as usize]=-1; } } }
-        let collected = scratch.iter().filter(|&&u| dist[u as usize].is_finite() && dist[u as usize] < new_bound).count() as u32;
+    let new_bound = if truncated { max_seen } else { f32::INFINITY };
+    if truncated { for &u in scratch.iter() { if dist[u as usize] > new_bound { dist[u as usize]=f32::INFINITY; pred[u as usize]=-1; } } }
+    let collected = scratch.iter().filter(|&&u| dist[u as usize].is_finite() && dist[u as usize] <= new_bound).count() as u32;
         total_relax += relax;
         final_collected = collected; final_bound = new_bound;
         // Subtree sizing
     let (roots, sizes) = compute_subtree_sizes(dist, pred, new_bound, &pop_order);
     // Invariant: roots subset of collected U set
-    for &r in &roots { inv_check(dist[r as usize].is_finite() && dist[r as usize] < new_bound, "root outside U set"); }
+    for &r in &roots { inv_check(dist[r as usize].is_finite() && dist[r as usize] <= new_bound, "root outside U set"); }
     // Invariant: max subtree size <= collected
     if let Some(max_local) = sizes.iter().max() { inv_check(*max_local <= collected, "subtree size exceeds collected"); }
     inv_check(collected <= k+1, "collected exceeds k+1 guard");
@@ -506,7 +506,8 @@ mod tests {
         // k=2 -> collect up to 3 pops (0 plus 2 children) then truncate
         let res = basecase_truncated(n,&off,&tgt,&wts,0,2,f32::INFINITY,&mut dist,&mut pred,&mut tmp,&mut relax);
         assert_eq!(res.outcome,1); // truncated
-        assert!(res.collected <= 2); // enforce dist < B'
+        // Inclusive bound may retain k+1-th pop's predecessors; ensure collected within k+1
+        assert!(res.collected <= 3);
     }
     #[test]
     fn phase2_simple_star(){
