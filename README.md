@@ -127,6 +127,22 @@ Larger run heatmap:
 
 ## 6. Reproduce Benchmarks
 ```bash
+# Native harness (sample sizes, single degree)
+cargo run --example bench_spec -- --sizes 25000,50000,100000,250000 --degrees 4 --seed 42 --out benchmarks/native_sample.json --full-parity --no-boundary-parity
+
+# Multi-degree grid (for heatmaps)
+cargo run --example bench_spec -- --sizes 25000,50000,100000 --degrees 2,4,8 --seed 42 --out benchmarks/native_grid.json --full-parity --no-boundary-parity
+
+# Generate charts & heatmaps (replaces existing images)
+python benchmarks/generate_charts.py --input benchmarks/native_grid.json --out-prefix benchmarks/native_grid --phase phase3
+
+# Outputs created (examples):
+# benchmarks/native_grid_benchmark.png (if single degree) or _speedup_multi_degree.png
+# benchmarks/native_grid_heatmap_speedup.png
+# benchmarks/native_grid_heatmap_baseline.png
+# Optional boundary chain comparative chart if not using --no-bc
+
+# Legacy Python benchmark (still supported)
 cargo build --release -p sssp_core
 python implementations/python/benchmark_rust_variants.py \
   --sizes 25000,50000,100000,250000,500000,1000000 \
