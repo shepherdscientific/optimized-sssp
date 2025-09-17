@@ -72,16 +72,28 @@ pub fn phase2_pivot_loop_placeholder() { /* no-op */ }
 #[repr(C)]
 #[derive(Copy,Clone,Default)]
 pub struct SpecRecursionStats {
-    pub frames: u32,                // number of recursion frames (segments)
-    pub total_relaxations: u64,     // sum of relaxations across segment truncated runs
-    pub baseline_relaxations: u64,  // full baseline relaxations (correctness oracle)
-    pub seed_k: u32,                // configured seed k
-    pub chain_segments: u32,        // same as frames (for continuity)
-    pub chain_total_collected: u32, // cumulative nodes collected (may truncate)
+    pub frames: u32,
+    pub total_relaxations: u64,
+    pub baseline_relaxations: u64,
+    pub seed_k: u32,
+    pub chain_segments: u32,
+    pub chain_total_collected: u32,
+    pub inv_checks: u64,
+    pub inv_failures: u64,
 }
-static mut LAST_RECURSION_STATS: SpecRecursionStats = SpecRecursionStats { frames:0, total_relaxations:0, baseline_relaxations:0, seed_k:0, chain_segments:0, chain_total_collected:0 };
+static mut LAST_RECURSION_STATS: SpecRecursionStats = SpecRecursionStats { frames:0, total_relaxations:0, baseline_relaxations:0, seed_k:0, chain_segments:0, chain_total_collected:0, inv_checks:0, inv_failures:0 };
 #[no_mangle]
 pub extern "C" fn sssp_get_spec_recursion_stats(out:*mut SpecRecursionStats){ if out.is_null(){ return; } unsafe { *out = LAST_RECURSION_STATS; } }
+
+// Frame detail export
+#[repr(C)]
+#[derive(Copy,Clone,Default)]
+pub struct SpecRecursionFrameDetail { pub id:u32, pub bound:f32, pub k_used:u32, pub segment_size:u32, pub truncated:i32, pub relaxations:u64, pub pivots_examined:u32, pub max_subtree:u32 }
+static mut RECURSION_FRAMES: Vec<SpecRecursionFrameDetail> = Vec::new();
+#[no_mangle]
+pub extern "C" fn sssp_get_spec_recursion_frame_count() -> u32 { unsafe { RECURSION_FRAMES.len() as u32 } }
+#[no_mangle]
+pub extern "C" fn sssp_get_spec_recursion_frame(idx: u32, out:*mut SpecRecursionFrameDetail) -> i32 { if out.is_null(){ return -2; } unsafe { if (idx as usize) >= RECURSION_FRAMES.len() { return -1; } *out = RECURSION_FRAMES[idx as usize]; } 0 }
 
 // Placeholder recursive runner: currently delegates to baseline and records a single frame.
 #[no_mangle]
@@ -114,6 +126,9 @@ pub extern "C" fn sssp_run_spec_recursive(
         let mut k = std::env::var("SSSP_SPEC_CHAIN_K").ok().and_then(|v| v.parse().ok()).unwrap_or(1024).max(1);
         let seg_max = std::env::var("SSSP_SPEC_CHAIN_MAX_SEG").ok().and_then(|v| v.parse().ok()).unwrap_or(32).max(1);
         let target_total = std::env::var("SSSP_SPEC_CHAIN_TARGET").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
+        let max_frames = std::env::var("SSSP_SPEC_RECURSION_MAX_FRAMES").ok().and_then(|v| v.parse().ok()).unwrap_or(256).max(1);
+        unsafe { RECURSION_FRAMES.clear(); }
+        let mut inv_checks: u64 = 0; let mut inv_failures: u64 = 0; let mut prev_bound = -1.0f32;
         while chain_segments < seg_max && (target_total==0 || chain_total_collected < target_total) && chain_total_collected < n {
             // Truncated basecase ignoring visited
             #[derive(Copy,Clone)] struct Item { u:u32, d:f32 }
@@ -136,12 +151,20 @@ pub extern "C" fn sssp_run_spec_recursive(
             let mut segment_nodes: Vec<u32> = Vec::new();
             for &u in &scratch { let ui=u as usize; let dval=dist[ui]; if dval.is_finite() && dval < bound && !visited[ui] { segment_nodes.push(u); } }
             if segment_nodes.is_empty() { break; }
+            // Invariant: monotonic bound
+            if prev_bound >= 0.0 { inv_checks += 1; if !(bound > prev_bound) { inv_failures += 1; } }
             for &u in &segment_nodes { visited[u as usize]=true; }
             let seg_size = segment_nodes.len() as u32; chain_total_collected += seg_size; seg_relax_sum += relax; chain_segments += 1; frames = chain_segments;
+            // Dependency invariant
+            for &u in &segment_nodes { let ui = u as usize; let p = pred[ui]; if p >= 0 { inv_checks += 1; let pi = p as usize; if !(visited[pi] && dist[pi] <= dist[ui]) { inv_failures += 1; } } }
+            if unsafe { RECURSION_FRAMES.len() } < max_frames as usize { unsafe { RECURSION_FRAMES.push(SpecRecursionFrameDetail { id: chain_segments, bound, k_used: k, segment_size: seg_size, truncated: if truncated {1} else {0}, relaxations: relax, pivots_examined:0, max_subtree:0 }); } }
             if !truncated { break; }
             // adapt k doubling heuristic similar to pivot loop (optional) - keep simple now
             if seg_size >= k { k = (k.saturating_mul(2)).min(n); }
+            prev_bound = bound;
+            if chain_segments >= max_frames { break; }
         }
+        unsafe { LAST_RECURSION_STATS.inv_checks = inv_checks; LAST_RECURSION_STATS.inv_failures = inv_failures; }
     }
     // Correctness pass: populate final distances (and preds) using baseline unless parity disabled.
     let skip_baseline = std::env::var("SSSP_SPEC_RECURSION_SKIP_BASELINE").ok().map(|v| v=="1" || v.to_lowercase()=="true").unwrap_or(false);
@@ -156,7 +179,7 @@ pub extern "C" fn sssp_run_spec_recursive(
         if !out_pred.is_null() { unsafe { for i in 0..n as usize { *out_pred.add(i) = -1; } } }
         if !info.is_null() { unsafe { (*info).relaxations = 0; } }
     }
-    unsafe { LAST_RECURSION_STATS = SpecRecursionStats { frames, total_relaxations: seg_relax_sum, baseline_relaxations: baseline_relax, seed_k, chain_segments, chain_total_collected }; }
+    unsafe { LAST_RECURSION_STATS.frames = frames; LAST_RECURSION_STATS.total_relaxations = seg_relax_sum; LAST_RECURSION_STATS.baseline_relaxations = baseline_relax; LAST_RECURSION_STATS.seed_k = seed_k; LAST_RECURSION_STATS.chain_segments = chain_segments; LAST_RECURSION_STATS.chain_total_collected = chain_total_collected; }
     0
  }
 
