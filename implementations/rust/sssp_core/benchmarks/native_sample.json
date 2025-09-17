@@ -1,0 +1,28 @@
+[
+  {
+    "avg_degree": 4.0,
+    "baseline_ms": 2.587075,
+    "boundary_chain_ms": 1.9561439999999999,
+    "boundary_chain_speedup": 1.3225381158033356,
+    "m": 7998,
+    "n": 2000,
+    "phase3_ms": 0.7356659999999999,
+    "phase3_speedup": 3.5166434224226757,
+    "relaxations_baseline": 2365,
+    "relaxations_boundary_chain": 2365,
+    "relaxations_phase3": 2586
+  },
+  {
+    "avg_degree": 4.0,
+    "baseline_ms": 5.6259689999999996,
+    "boundary_chain_ms": 4.102515,
+    "boundary_chain_speedup": 1.3713463570517108,
+    "m": 16000,
+    "n": 4000,
+    "phase3_ms": 1.430143,
+    "phase3_speedup": 3.9338506708769683,
+    "relaxations_baseline": 4687,
+    "relaxations_boundary_chain": 4687,
+    "relaxations_phase3": 5258
+  }
+]
