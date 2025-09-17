@@ -67,3 +67,51 @@ pub struct Phase2Result<'a> { pub success: bool, pub attempts: Vec<Phase2Attempt
 
 // Placeholder: actual implementation provided in spec_clean.rs (Phase 2 integration) later.
 pub fn phase2_pivot_loop_placeholder() { /* no-op */ }
+
+// ---------------- Recursion Scaffold (Phase 4 placeholder) ----------------
+#[repr(C)]
+#[derive(Copy,Clone,Default)]
+pub struct SpecRecursionStats { pub frames: u32, pub total_relaxations: u64, pub seed_k: u32 }
+static mut LAST_RECURSION_STATS: SpecRecursionStats = SpecRecursionStats { frames:0, total_relaxations:0, seed_k:0 };
+#[no_mangle]
+pub extern "C" fn sssp_get_spec_recursion_stats(out:*mut SpecRecursionStats){ if out.is_null(){ return; } unsafe { *out = LAST_RECURSION_STATS; } }
+
+// Placeholder recursive runner: currently delegates to baseline and records a single frame.
+#[no_mangle]
+pub extern "C" fn sssp_run_spec_recursive(
+    n: u32,
+    offsets:*const u32,
+    targets:*const u32,
+    weights:*const f32,
+    source:u32,
+    out_dist:*mut f32,
+    out_pred:*mut i32,
+    info:*mut crate::SsspResultInfo,
+) -> i32 {
+    if n==0 { return -1; }
+    // Seed k (for future splitting decisions) from env or default
+    let seed_k = std::env::var("SSSP_SPEC_RECURSION_K").ok().and_then(|v| v.parse().ok()).unwrap_or(1024).max(1);
+    // Delegate to baseline for now (full correctness) – future: Phase2->Chain->Recursive descent
+    let rc = unsafe { crate::sssp_run_baseline(n, offsets, targets, weights, source, out_dist, out_pred, info) };
+    if rc!=0 { return rc; }
+    // Record stats (pull relaxations from info if provided)
+    let rel = if info.is_null() {0} else { unsafe { (*info).relaxations } };
+    unsafe { LAST_RECURSION_STATS = SpecRecursionStats { frames: 1, total_relaxations: rel, seed_k }; }
+    0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn recursion_scaffold_smoke(){
+        // Simple line graph 0-1-2
+        let off=[0u32,1,2,2]; let tgt=[1,2]; let wts=[1.0f32,2.0];
+        let n=3u32; let mut dist=vec![0f32;3]; let mut pred=vec![-1i32;3];
+        let mut info = crate::SsspResultInfo{relaxations:0,light_relaxations:0,heavy_relaxations:0,settled:0,error_code:0};
+        let rc = sssp_run_spec_recursive(n, off.as_ptr(), tgt.as_ptr(), wts.as_ptr(), 0, dist.as_mut_ptr(), pred.as_mut_ptr(), &mut info as *mut _);
+        assert_eq!(rc,0); assert!((dist[1]-1.0).abs()<1e-6); assert!((dist[2]-3.0).abs()<1e-6);
+        let mut stats = SpecRecursionStats::default(); unsafe { sssp_get_spec_recursion_stats(&mut stats as *mut _); }
+        assert_eq!(stats.frames,1);
+    }
+}

@@ -549,3 +549,8 @@ pub use spec_clean::{
     sssp_get_spec_boundary_chain_stats,
     sssp_get_spec_invariant_stats,
 };
+pub use spec_future::{
+    sssp_run_spec_recursive,
+    sssp_get_spec_recursion_stats,
+    SpecRecursionStats,
+};
