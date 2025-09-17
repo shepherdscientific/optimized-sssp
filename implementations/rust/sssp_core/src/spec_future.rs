@@ -72,13 +72,14 @@ pub fn phase2_pivot_loop_placeholder() { /* no-op */ }
 #[repr(C)]
 #[derive(Copy,Clone,Default)]
 pub struct SpecRecursionStats {
-    pub frames: u32,              // number of conceptual recursion frames (boundary segments)
-    pub total_relaxations: u64,   // baseline relaxations (currently correctness anchor)
-    pub seed_k: u32,              // configured seed k
-    pub chain_segments: u32,      // boundary chain segments discovered
-    pub chain_total_collected: u32, // total nodes collected across chain (may truncate)
+    pub frames: u32,                // number of recursion frames (segments)
+    pub total_relaxations: u64,     // sum of relaxations across segment truncated runs
+    pub baseline_relaxations: u64,  // full baseline relaxations (correctness oracle)
+    pub seed_k: u32,                // configured seed k
+    pub chain_segments: u32,        // same as frames (for continuity)
+    pub chain_total_collected: u32, // cumulative nodes collected (may truncate)
 }
-static mut LAST_RECURSION_STATS: SpecRecursionStats = SpecRecursionStats { frames:0, total_relaxations:0, seed_k:0, chain_segments:0, chain_total_collected:0 };
+static mut LAST_RECURSION_STATS: SpecRecursionStats = SpecRecursionStats { frames:0, total_relaxations:0, baseline_relaxations:0, seed_k:0, chain_segments:0, chain_total_collected:0 };
 #[no_mangle]
 pub extern "C" fn sssp_get_spec_recursion_stats(out:*mut SpecRecursionStats){ if out.is_null(){ return; } unsafe { *out = LAST_RECURSION_STATS; } }
 
@@ -97,34 +98,65 @@ pub extern "C" fn sssp_run_spec_recursive(
     if n==0 { return -1; }
     // Seed k (future: guides basecase sizing for recursion splitting)
     let seed_k = std::env::var("SSSP_SPEC_RECURSION_K").ok().and_then(|v| v.parse().ok()).unwrap_or(1024).max(1);
-    // Always obtain full correct distances first via baseline (correctness anchor)
-    let rc = unsafe { crate::sssp_run_baseline(n, offsets, targets, weights, source, out_dist, out_pred, info) };
-    if rc!=0 { return rc; }
-    let baseline_relax = if info.is_null() {0} else { unsafe { (*info).relaxations } };
-    // Optionally skip segmentation if disabled
+    // Perform segmentation descent (prototype) using an internal variant of boundary chain to gather frames & per-frame relaxations.
     let disable_chain = std::env::var("SSSP_SPEC_RECURSION_NO_CHAIN").ok().map(|v| v=="1" || v.to_lowercase()=="true").unwrap_or(false);
-    let mut chain_segments = 0u32; let mut chain_total_collected = 0u32; let mut frames = 1u32;
+    let mut chain_segments = 0u32; let mut chain_total_collected = 0u32; let mut frames = 1u32; let mut seg_relax_sum: u64 = 0;
     if !disable_chain {
-        // Run boundary chain on a scratch dist/pred to derive segment layering. Uses existing env for chain sizing.
         let n_usize = n as usize;
         let off = unsafe { core::slice::from_raw_parts(offsets, n_usize+1) };
         let m = off[n_usize] as usize;
         let tgt = unsafe { core::slice::from_raw_parts(targets, m) };
         let wts = unsafe { core::slice::from_raw_parts(weights, m) };
-        // allocate scratch arrays
-        let mut dist_scratch = vec![f32::INFINITY; n_usize];
-        let mut pred_scratch = vec![-1i32; n_usize];
-        let mut info_chain = crate::SsspResultInfo { relaxations:0, light_relaxations:0, heavy_relaxations:0, settled:0, error_code:0 };
-        let rc2 = unsafe { crate::sssp_run_spec_boundary_chain(n, offsets, targets, weights, source, dist_scratch.as_mut_ptr(), pred_scratch.as_mut_ptr(), &mut info_chain as *mut _) };
-        if rc2==0 {
-            // Fetch chain stats
-            let mut chain_stats = crate::spec_clean::SpecBoundaryChainStats { segments:0, attempts:0, total_collected:0, max_segment:0, monotonic_ok:1, relaxations:0 };
-            unsafe { crate::sssp_get_spec_boundary_chain_stats(&mut chain_stats as *mut _); }
-            chain_segments = chain_stats.segments; chain_total_collected = chain_stats.total_collected;
-            if chain_segments > 0 { frames = chain_segments; }
+        let mut dist = vec![f32::INFINITY; n_usize];
+        let mut pred = vec![-1i32; n_usize];
+        let mut visited = vec![false; n_usize];
+        dist[source as usize] = 0.0;
+        let mut k = std::env::var("SSSP_SPEC_CHAIN_K").ok().and_then(|v| v.parse().ok()).unwrap_or(1024).max(1);
+        let seg_max = std::env::var("SSSP_SPEC_CHAIN_MAX_SEG").ok().and_then(|v| v.parse().ok()).unwrap_or(32).max(1);
+        let target_total = std::env::var("SSSP_SPEC_CHAIN_TARGET").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
+        while chain_segments < seg_max && (target_total==0 || chain_total_collected < target_total) && chain_total_collected < n {
+            // Truncated basecase ignoring visited
+            #[derive(Copy,Clone)] struct Item { u:u32, d:f32 }
+            impl PartialEq for Item { fn eq(&self,o:&Self)->bool { self.d==o.d && self.u==o.u } }
+            impl Eq for Item {}
+            impl PartialOrd for Item { fn partial_cmp(&self,o:&Self)->Option<std::cmp::Ordering>{ o.d.partial_cmp(&self.d) } }
+            impl Ord for Item { fn cmp(&self,o:&Self)->std::cmp::Ordering { self.partial_cmp(o).unwrap() } }
+            use std::collections::BinaryHeap; let mut pq = BinaryHeap::new();
+            if chain_segments==0 { pq.push(Item{u:source,d:0.0}); }
+            let mut popped=0u32; let mut max_seen=0.0f32; let mut truncated=false; let mut relax=0u64; let mut scratch: Vec<u32> = Vec::with_capacity(k as usize + 2);
+            while let Some(Item{u,d}) = pq.pop() {
+                if d > dist[u as usize] { continue; }
+                if visited[u as usize] { continue; }
+                scratch.push(u); popped+=1; if d>max_seen { max_seen=d; }
+                if popped==k+1 { truncated=true; break; }
+                let ui = u as usize; let se = off[ui] as usize; let ee = off[ui+1] as usize;
+                for e in se..ee { let v = tgt[e] as usize; if visited[v] { continue; } let nd = d + wts[e]; let cur = dist[v]; if nd < cur { dist[v]=nd; pred[v]=u as i32; pq.push(Item{u:v as u32,d:nd}); relax+=1; } }
+            }
+            let bound = if truncated { max_seen } else { f32::INFINITY };
+            let mut segment_nodes: Vec<u32> = Vec::new();
+            for &u in &scratch { let ui=u as usize; let dval=dist[ui]; if dval.is_finite() && dval < bound && !visited[ui] { segment_nodes.push(u); } }
+            if segment_nodes.is_empty() { break; }
+            for &u in &segment_nodes { visited[u as usize]=true; }
+            let seg_size = segment_nodes.len() as u32; chain_total_collected += seg_size; seg_relax_sum += relax; chain_segments += 1; frames = chain_segments;
+            if !truncated { break; }
+            // adapt k doubling heuristic similar to pivot loop (optional) - keep simple now
+            if seg_size >= k { k = (k.saturating_mul(2)).min(n); }
         }
     }
-    unsafe { LAST_RECURSION_STATS = SpecRecursionStats { frames, total_relaxations: baseline_relax, seed_k, chain_segments, chain_total_collected }; }
+    // Correctness pass: populate final distances (and preds) using baseline unless parity disabled.
+    let skip_baseline = std::env::var("SSSP_SPEC_RECURSION_SKIP_BASELINE").ok().map(|v| v=="1" || v.to_lowercase()=="true").unwrap_or(false);
+    let mut baseline_relax = 0u64;
+    if !skip_baseline {
+        let rc = unsafe { crate::sssp_run_baseline(n, offsets, targets, weights, source, out_dist, out_pred, info) };
+        if rc!=0 { return rc; }
+        baseline_relax = if info.is_null() {0} else { unsafe { (*info).relaxations } };
+    } else {
+        // If skipped, zero distances except source to avoid undefined memory exposure.
+        if !out_dist.is_null() { unsafe { for i in 0..n as usize { *out_dist.add(i) = if i==source as usize {0.0} else { f32::INFINITY }; } } }
+        if !out_pred.is_null() { unsafe { for i in 0..n as usize { *out_pred.add(i) = -1; } } }
+        if !info.is_null() { unsafe { (*info).relaxations = 0; } }
+    }
+    unsafe { LAST_RECURSION_STATS = SpecRecursionStats { frames, total_relaxations: seg_relax_sum, baseline_relaxations: baseline_relax, seed_k, chain_segments, chain_total_collected }; }
     0
  }
 
