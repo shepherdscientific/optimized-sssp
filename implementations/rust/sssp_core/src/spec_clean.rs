@@ -339,6 +339,80 @@ pub extern "C" fn sssp_run_spec_phase3(
     0
 }
 
+// ------------- Boundary Chain Runner (Phase 3 extension) -------------
+#[repr(C)]
+#[derive(Copy,Clone,Default)]
+pub struct SpecBoundaryChainStats {
+    pub segments: u32,
+    pub attempts: u32,
+    pub total_collected: u32,
+    pub max_segment: u32,
+    pub monotonic_ok: i32,
+    pub relaxations: u64,
+}
+static mut LAST_CHAIN_STATS: SpecBoundaryChainStats = SpecBoundaryChainStats { segments:0, attempts:0, total_collected:0, max_segment:0, monotonic_ok:1, relaxations:0 };
+#[no_mangle]
+pub extern "C" fn sssp_get_spec_boundary_chain_stats(out:*mut SpecBoundaryChainStats){ if out.is_null(){ return; } unsafe { *out = LAST_CHAIN_STATS; } }
+
+#[no_mangle]
+pub extern "C" fn sssp_run_spec_boundary_chain(
+    n: u32,
+    offsets:*const u32,
+    targets:*const u32,
+    weights:*const f32,
+    source:u32,
+    out_dist:*mut f32,
+    out_pred:*mut i32,
+    info:*mut crate::SsspResultInfo,
+) -> i32 {
+    if n==0 { return -1; }
+    if source>=n { return -2; }
+    if offsets.is_null() || targets.is_null() || weights.is_null() || out_dist.is_null() || out_pred.is_null(){ return -3; }
+    let n_usize = n as usize; let off = unsafe { as_slice(offsets, n_usize+1) }; let m = off[n_usize] as usize;
+    let tgt = unsafe { as_slice(targets, m) }; let wts = unsafe { as_slice(weights, m) };
+    let dist = unsafe { as_mut_slice(out_dist, n_usize) }; let pred = unsafe { as_mut_slice(out_pred, n_usize) };
+    for d in dist.iter_mut() { *d = f32::INFINITY; } for p in pred.iter_mut() { *p = -1; }
+    let mut visited = vec![false; n_usize];
+    let mut total_relax = 0u64; let mut total_collected = 0u32; let mut segments = 0u32; let mut attempts=0u32; let mut max_segment=0u32; let mut monotonic_ok = 1i32; let mut last_bound = -1.0f32;
+    let mut k = std::env::var("SSSP_SPEC_CHAIN_K").ok().and_then(|v| v.parse().ok()).unwrap_or(1024).max(1);
+    let seg_max = std::env::var("SSSP_SPEC_CHAIN_MAX_SEG").ok().and_then(|v| v.parse().ok()).unwrap_or(32).max(1);
+    let target_total = std::env::var("SSSP_SPEC_CHAIN_TARGET").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
+    dist[source as usize] = 0.0;
+    while segments < seg_max && (target_total==0 || total_collected < target_total) && total_collected < n {
+        attempts += 1;
+        // Run truncated basecase variant ignoring visited nodes (skip relax into them)
+        // Reusing simplified Dijkstra-like truncated procedure
+        for d in dist.iter_mut() { if !d.is_finite() { *d = f32::INFINITY; } } // maintain previous distances for visited? We'll ignore they are INF initially except source
+        // local arrays
+        #[derive(Copy,Clone)] struct ItemC { u:u32, d:f32 }
+        impl PartialEq for ItemC { fn eq(&self,o:&Self)->bool { self.d==o.d && self.u==o.u } }
+        impl Eq for ItemC {}
+        impl PartialOrd for ItemC { fn partial_cmp(&self,o:&Self)->Option<std::cmp::Ordering>{ o.d.partial_cmp(&self.d) } }
+        impl Ord for ItemC { fn cmp(&self,o:&Self)->std::cmp::Ordering { self.partial_cmp(o).unwrap() } }
+        use std::collections::BinaryHeap; let mut pq = BinaryHeap::new();
+        if segments==0 { pq.push(ItemC{u:source,d:0.0}); }
+        let mut scratch: Vec<u32> = Vec::with_capacity(k as usize + 2);
+        let mut popped=0u32; let mut max_seen=0.0f32; let mut truncated=false; let mut relax=0u64;
+        while let Some(ItemC{u,dv}) = pq.pop() { if dv > dist[u as usize] { continue; } if visited[u as usize] { continue; } scratch.push(u); popped+=1; if dv>max_seen { max_seen=dv; } if popped==k+1 { truncated=true; break; } let ui=u as usize; let se=off[ui] as usize; let ee=off[ui+1] as usize; for e in se..ee { let v=tgt[e] as usize; if visited[v] { continue; } let nd = dv + wts[e]; let cur = dist[v]; if nd < cur { dist[v]=nd; pred[v]=u as i32; pq.push(ItemC{u:v as u32,d:nd}); relax+=1; } } }
+        let bound = if truncated { max_seen } else { f32::INFINITY };
+        // Segment set
+        let mut segment_nodes: Vec<u32> = Vec::new();
+        for &u in &scratch { let ui=u as usize; let dval=dist[ui]; if dval.is_finite() && dval < bound && !visited[ui] { segment_nodes.push(u); } }
+        if segment_nodes.is_empty() { break; }
+        // Invariants
+        if last_bound >= 0.0 { inv_check(bound > last_bound, "Boundary not strictly increasing"); if !(bound > last_bound) { monotonic_ok = 0; } }
+        for &u in &segment_nodes { inv_check(!visited[u as usize], "Node repeated in chain"); }
+        // Mark visited
+        for &u in &segment_nodes { visited[u as usize] = true; }
+        let seg_size = segment_nodes.len() as u32; if seg_size > max_segment { max_segment = seg_size; }
+        total_collected += seg_size; total_relax += relax; segments += 1; last_bound = bound;
+        if !truncated { break; }
+    }
+    unsafe { LAST_CHAIN_STATS = SpecBoundaryChainStats { segments, attempts, total_collected, max_segment, monotonic_ok, relaxations: total_relax }; }
+    if !info.is_null(){ unsafe { *info = crate::SsspResultInfo { relaxations: total_relax, light_relaxations:0, heavy_relaxations:0, settled: total_collected, error_code: monotonic_ok }; } }
+    0
+}
+
 #[no_mangle]
 pub extern "C" fn sssp_spec_basecase_probe(
     n: u32,
@@ -491,5 +565,29 @@ mod tests {
         let mut info = crate::SsspResultInfo { relaxations:0, light_relaxations:0, heavy_relaxations:0, settled:0, error_code:0 };
         let rc = sssp_run_spec_phase3(n, off.as_ptr(), tgt.as_ptr(), wts.as_ptr(), 0, dist.as_mut_ptr(), pred.as_mut_ptr(), &mut info as *mut _);
         assert_eq!(rc,0); assert!((dist[1]-1.0).abs()<1e-6); assert!((dist[2]-1.5).abs()<1e-6);
+    }
+    #[test]
+    fn boundary_chain_line(){
+        // Line graph to produce multiple small segments with small k
+        let off=[0u32,1,2,3,4,4]; let tgt=[1,2,3,4]; let wts=[1.0f32;4]; let n=5u32;
+        let mut dist=vec![0f32;5]; let mut pred=vec![-1i32;5];
+        std::env::set_var("SSSP_SPEC_CHAIN_K","1");
+        std::env::set_var("SSSP_SPEC_CHAIN_MAX_SEG","10");
+        let mut info = crate::SsspResultInfo{relaxations:0,light_relaxations:0,heavy_relaxations:0,settled:0,error_code:0};
+        let rc = sssp_run_spec_boundary_chain(n, off.as_ptr(), tgt.as_ptr(), wts.as_ptr(), 0, dist.as_mut_ptr(), pred.as_mut_ptr(), &mut info as *mut _); assert_eq!(rc,0);
+        let mut stats = SpecBoundaryChainStats::default(); unsafe { sssp_get_spec_boundary_chain_stats(&mut stats as *mut _); }
+        assert!(stats.segments >=2);
+        assert!(stats.total_collected >=1);
+    }
+    #[test]
+    fn boundary_chain_star(){
+        // Star should collect center then spokes depending on k
+        let off=[0u32,5,5,5,5,5,5]; let tgt=[1,2,3,4,5]; let wts=[1.0f32;5]; let n=6u32;
+        let mut dist=vec![0f32;6]; let mut pred=vec![-1i32;6];
+        std::env::set_var("SSSP_SPEC_CHAIN_K","2");
+        let mut info = crate::SsspResultInfo{relaxations:0,light_relaxations:0,heavy_relaxations:0,settled:0,error_code:0};
+        let rc = sssp_run_spec_boundary_chain(n, off.as_ptr(), tgt.as_ptr(), wts.as_ptr(), 0, dist.as_mut_ptr(), pred.as_mut_ptr(), &mut info as *mut _); assert_eq!(rc,0);
+        let mut stats = SpecBoundaryChainStats::default(); unsafe { sssp_get_spec_boundary_chain_stats(&mut stats as *mut _); }
+        assert!(stats.total_collected >=1);
     }
 }

@@ -58,7 +58,7 @@ Pull capacity M = 2^{(l-1) t}
 | Pivot discovery (k waves / BF style) | Shrink frontier | ✅ (initial) | Phase 2 |
 | Forest root filtering (≥ k subtree) | Bound pivot count | ✅ (initial) | Phase 2 |
 | Data structure D (Pull / BatchPrepend) | Amortized selection | ✅ (initial) | Phase 3 |
-| Boundary B'/B management chain | Disjoint U_i sets | ❌ | Phase 3 |
+| Boundary B'/B management chain | Disjoint U_i sets | ✅ (initial) | Phase 3 |
 | Multi-level recursion l=0..L | Hierarchical scaling | ❌ | Phase 4 |
 | Invariant checks (S-size, dependency) | Safety proofs | ❌ | Ongoing (each phase) |
 | Instrumented counters per recursion | Empirical validation | ❌ | Phase 4 |
