@@ -188,6 +188,20 @@ static mut LAST_PHASE2_STATS: SpecPhase2Stats = SpecPhase2Stats { attempts:0, su
 #[no_mangle]
 pub extern "C" fn sssp_get_spec_phase2_stats(out:*mut SpecPhase2Stats){ if out.is_null(){ return; } unsafe { *out = LAST_PHASE2_STATS; } }
 
+// Invariant assertion framework (Phase 2 partial)
+#[repr(C)]
+#[derive(Copy,Clone,Default)]
+pub struct SpecInvariantStats { pub checks: u64, pub failures: u64 }
+static mut LAST_INV_STATS: SpecInvariantStats = SpecInvariantStats { checks:0, failures:0 };
+#[no_mangle]
+pub extern "C" fn sssp_get_spec_invariant_stats(out:*mut SpecInvariantStats){ if out.is_null(){ return; } unsafe { *out = LAST_INV_STATS; } }
+
+fn inv_check(cond: bool, _msg: &str) {
+    let enabled = std::env::var("SSSP_SPEC_CHECK").ok().map(|v| v=="1" || v.to_lowercase()=="true").unwrap_or(false);
+    if !enabled { return; }
+    unsafe { LAST_INV_STATS.checks += 1; if !cond { LAST_INV_STATS.failures += 1; eprintln!("[spec-invariant] FAIL: {}", _msg); } }
+}
+
 #[no_mangle]
 pub extern "C" fn sssp_run_spec_phase2(
     n: u32,
@@ -246,7 +260,12 @@ pub extern "C" fn sssp_run_spec_phase2(
         total_relax += relax;
         final_collected = collected; final_bound = new_bound;
         // Subtree sizing
-        let (roots, sizes) = compute_subtree_sizes(dist, pred, new_bound, &pop_order);
+    let (roots, sizes) = compute_subtree_sizes(dist, pred, new_bound, &pop_order);
+    // Invariant: roots subset of collected U set
+    for &r in &roots { inv_check(dist[r as usize].is_finite() && dist[r as usize] < new_bound, "root outside U set"); }
+    // Invariant: max subtree size <= collected
+    if let Some(max_local) = sizes.iter().max() { inv_check(*max_local <= collected, "subtree size exceeds collected"); }
+    inv_check(collected <= k+1, "collected exceeds k+1 guard");
         roots_examined_any += roots.len() as u32;
         let mut local_max = 0u32; for &s in &sizes { if s>local_max { local_max = s; } }
         if local_max > max_subtree_any { max_subtree_any = local_max; }

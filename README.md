@@ -54,14 +54,18 @@ Pull capacity M = 2^{(l-1) t}
 | Spec Element | Needed For | Implemented? | Planned Phase |
 |--------------|-----------|--------------|---------------|
 | Equality relax (<=) invariant | Tight forest reuse | ✅ (baseline & spec_clean) | — |
-| BaseCase truncated growth (k+1 guard) | Size control | ❌ | Phase 1 (next) |
-| Pivot discovery (k waves / BF style) | Shrink frontier | ❌ | Phase 2 |
-| Forest root filtering (≥ k subtree) | Bound pivot count | ❌ | Phase 2 |
+| BaseCase truncated growth (k+1 guard) | Size control | ✅ (Phase 1 done) | Phase 1 |
+| Pivot discovery (k waves / BF style) | Shrink frontier | ✅ (initial) | Phase 2 |
+| Forest root filtering (≥ k subtree) | Bound pivot count | ✅ (initial) | Phase 2 |
 | Data structure D (Pull / BatchPrepend) | Amortized selection | ❌ | Phase 3 |
 | Boundary B'/B management chain | Disjoint U_i sets | ❌ | Phase 3 |
 | Multi-level recursion l=0..L | Hierarchical scaling | ❌ | Phase 4 |
 | Invariant checks (S-size, dependency) | Safety proofs | ❌ | Ongoing (each phase) |
 | Instrumented counters per recursion | Empirical validation | ❌ | Phase 4 |
+
+Legend: ✅ (initial) = first functional version (not yet optimized / reused across attempts). Further refinement planned in subsequent phases.
+
+Invariant coverage currently partial: size boundary and root filtering verified implicitly via Phase 2 stats; formal dependency and disjoint-set checks pending (`SSSP_SPEC_CHECK` forthcoming).
 
 ## 5. Benchmarks
 
