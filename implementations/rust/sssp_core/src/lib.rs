@@ -534,5 +534,18 @@ pub extern "C" fn sssp_run_stoc_auto_adapt(
     rc
 }
 
-mod spec_clean; // brings in sssp_run_spec_clean symbol (#[no_mangle])
+mod spec_clean; // specification phased implementation module
 mod spec_future; // scaffolding for upcoming phases (no exported symbols yet)
+
+// Re-export selected spec phase symbols for direct crate-root access in tests / FFI users.
+pub use spec_clean::{
+    sssp_run_spec_phase1,
+    sssp_run_spec_phase2,
+    sssp_run_spec_phase3,
+    sssp_run_spec_boundary_chain,
+    sssp_get_spec_phase1_stats,
+    sssp_get_spec_phase2_stats,
+    sssp_get_spec_phase3_stats,
+    sssp_get_spec_boundary_chain_stats,
+    sssp_get_spec_invariant_stats,
+};

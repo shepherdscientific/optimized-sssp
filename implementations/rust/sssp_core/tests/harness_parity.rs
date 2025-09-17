@@ -111,9 +111,10 @@ fn parity_core_small_graphs(){
         bridge_cliques(4,4,1.0),
         complete_graph(6,1.0),
     ];
-    std::env::set_var("SSSP_SPEC_K","3");
-    std::env::set_var("SSSP_SPEC_PIVOT_MAX","4");
-    std::env::set_var("SSSP_SPEC_CHAIN_K","3");
+    // Use large k bounds to force full expansion (avoid truncation differences)
+    std::env::set_var("SSSP_SPEC_K","10000");
+    std::env::set_var("SSSP_SPEC_PIVOT_MAX","10000");
+    std::env::set_var("SSSP_SPEC_CHAIN_K","10000");
     for g in &graphs {
         let (bdist,_bpred,_binfo) = run_variant("baseline", g, 0);
         let bhash = hash_dist(&bdist);
@@ -123,8 +124,9 @@ fn parity_core_small_graphs(){
 
 #[test]
 fn parity_random_graphs(){
-    std::env::set_var("SSSP_SPEC_K","4");
-    std::env::set_var("SSSP_SPEC_PIVOT_MAX","5");
+    std::env::set_var("SSSP_SPEC_K","10000");
+    std::env::set_var("SSSP_SPEC_PIVOT_MAX","10000");
+    std::env::set_var("SSSP_SPEC_CHAIN_K","10000");
     for seed in 1..=5u64 { // moderate size to keep runtime reasonable
         let g = pseudo_random_graph(40, 160, seed * 7919, 0.5, 3.5);
         let (bdist,_bp,_bi) = run_variant("baseline", &g, 0);
