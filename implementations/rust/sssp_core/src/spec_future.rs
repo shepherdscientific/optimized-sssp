@@ -88,7 +88,22 @@ pub extern "C" fn sssp_get_spec_recursion_stats(out:*mut SpecRecursionStats){ if
 // Frame detail export
 #[repr(C)]
 #[derive(Copy,Clone,Default)]
-pub struct SpecRecursionFrameDetail { pub id:u32, pub bound:f32, pub k_used:u32, pub segment_size:u32, pub truncated:i32, pub relaxations:u64, pub pivots_examined:u32, pub max_subtree:u32 }
+pub struct SpecRecursionFrameDetail {
+    pub id:u32,
+    pub bound:f32,
+    pub k_used:u32,
+    pub segment_size:u32,
+    pub truncated:i32,
+    pub relaxations:u64,
+    pub pivots_examined:u32,
+    pub max_subtree:u32,
+    // Multi-level placeholders (unused in single-layer prototype)
+    pub depth:u32,
+    pub parent_id:u32,
+    pub pruning_ratio_f32:f32,
+    pub bound_improvement_f32:f32,
+    pub pivot_success_rate_f32:f32,
+}
 static mut RECURSION_FRAMES: Vec<SpecRecursionFrameDetail> = Vec::new();
 #[no_mangle]
 pub extern "C" fn sssp_get_spec_recursion_frame_count() -> u32 { unsafe { RECURSION_FRAMES.len() as u32 } }
@@ -157,7 +172,11 @@ pub extern "C" fn sssp_run_spec_recursive(
             let seg_size = segment_nodes.len() as u32; chain_total_collected += seg_size; seg_relax_sum += relax; chain_segments += 1; frames = chain_segments;
             // Dependency invariant
             for &u in &segment_nodes { let ui = u as usize; let p = pred[ui]; if p >= 0 { inv_checks += 1; let pi = p as usize; if !(visited[pi] && dist[pi] <= dist[ui]) { inv_failures += 1; } } }
-            if unsafe { RECURSION_FRAMES.len() } < max_frames as usize { unsafe { RECURSION_FRAMES.push(SpecRecursionFrameDetail { id: chain_segments, bound, k_used: k, segment_size: seg_size, truncated: if truncated {1} else {0}, relaxations: relax, pivots_examined:0, max_subtree:0 }); } }
+            if unsafe { RECURSION_FRAMES.len() } < max_frames as usize { unsafe { RECURSION_FRAMES.push(SpecRecursionFrameDetail {
+                id: chain_segments, bound, k_used: k, segment_size: seg_size, truncated: if truncated {1} else {0}, relaxations: relax,
+                pivots_examined:0, max_subtree:0,
+                depth:0, parent_id:0, pruning_ratio_f32:0.0, bound_improvement_f32:0.0, pivot_success_rate_f32:0.0
+            }); } }
             if !truncated { break; }
             // adapt k doubling heuristic similar to pivot loop (optional) - keep simple now
             if seg_size >= k { k = (k.saturating_mul(2)).min(n); }
