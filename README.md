@@ -110,6 +110,12 @@ Note: Large apparent speedups before recursion lands can indicate truncation was
 
 ## 6. Reproduce Benchmarks
 ```bash
+# Quick path using Makefile helpers
+make bench-grid charts        # multi-degree grid + PNGs
+make bench-python-sample      # legacy python sample JSON
+make md-table                 # render markdown table from sample JSON
+make refresh-bench-assets     # end-to-end refresh
+
 # Native harness (sample sizes, single degree)
 cargo run --example bench_spec -- --sizes 25000,50000,100000,250000 --degrees 4 --seed 42 --out benchmarks/native_sample.json --full-parity --no-boundary-parity
 
@@ -144,6 +150,9 @@ python implementations/python/benchmark_rust_variants.py \
   --density 2.0 --seed 42 \
   --output benchmarks/rust_spec_baseline_big.json \
   --plot benchmarks/rust_spec_baseline_big.png
+
+# Generate markdown summary table (writes benchmarks/bench_table.md)
+python benchmarks/json_to_md_table.py --input benchmarks/rust_spec_baseline_sample.json --output benchmarks/bench_table.md
 ```
 
 ## 7. Instrumentation Snapshot
@@ -158,6 +167,24 @@ Example JSON fields (per size):
 }
 ```
 Heap identity confirms no structural optimization applied yet—future phases should drive divergence (reduced pushes or lower max_size plateau) or justify conceptual changes.
+
+### 7.1 Sample Timing Table
+<details><summary>Expand sample benchmark table (generated)</summary>
+
+The table below is produced automatically via `make md-table` from `benchmarks/rust_spec_baseline_sample.json`.
+
+If not yet generated, run:
+```
+make bench-python-sample md-table
+```
+
+Include (do not hand-edit) the contents of `benchmarks/bench_table.md` here if committing a snapshot.
+
+```
+(placeholder) – generate locally
+```
+
+</details>
 
 ## 8. Development Roadmap (Rolling)
 1. (Done) BaseCase truncation & inclusive bound semantics.
