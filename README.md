@@ -5,6 +5,9 @@ go run cmd/benchmark/main.go --help
 
 From classical Dijkstra toward a structured path for O(m log^{2/3} n).
 
+Inspired by [Breaking the Sorting Barrier for Directed Single-Source Shortest
+Paths](https://arxiv.org/pdf/2504.17033)
+
 Current focus: Phase 1–3 + Boundary Chain validated (inclusive bound semantics) and recursion scaffold landed; next is real multi-level recursion & performance deltas.
 
 ## 1. Purpose
